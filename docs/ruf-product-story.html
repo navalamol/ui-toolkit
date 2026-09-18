@@ -1,0 +1,833 @@
+<title>RUF Debug Suite</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --surface2: #1a2236;
+    --border: #1e2d45;
+    --text: #e2e8f0;
+    --muted: #8b9ab5;
+    --accent: #3b82f6;
+    --accent-glow: rgba(59,130,246,0.15);
+    --green: #22c55e;
+    --green-dim: rgba(34,197,94,0.12);
+    --amber: #f59e0b;
+    --amber-dim: rgba(245,158,11,0.12);
+    --red: #ef4444;
+    --red-dim: rgba(239,68,68,0.12);
+    --purple: #a78bfa;
+    --purple-dim: rgba(167,139,250,0.12);
+    --cyan: #22d3ee;
+    --cyan-dim: rgba(34,211,238,0.12);
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f0f4ff;
+      --surface: #ffffff;
+      --surface2: #f8faff;
+      --border: #dde5f4;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #2563eb;
+      --accent-glow: rgba(37,99,235,0.1);
+      --green: #16a34a;
+      --green-dim: rgba(22,163,74,0.1);
+      --amber: #d97706;
+      --amber-dim: rgba(217,119,6,0.1);
+      --red: #dc2626;
+      --red-dim: rgba(220,38,38,0.1);
+      --purple: #7c3aed;
+      --purple-dim: rgba(124,58,237,0.1);
+      --cyan: #0891b2;
+      --cyan-dim: rgba(8,145,178,0.1);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f0f4ff;
+    --surface: #ffffff;
+    --surface2: #f8faff;
+    --border: #dde5f4;
+    --text: #0f172a;
+    --muted: #64748b;
+    --accent: #2563eb;
+    --accent-glow: rgba(37,99,235,0.1);
+    --green: #16a34a;
+    --green-dim: rgba(22,163,74,0.1);
+    --amber: #d97706;
+    --amber-dim: rgba(217,119,6,0.1);
+    --red: #dc2626;
+    --red-dim: rgba(220,38,38,0.1);
+    --purple: #7c3aed;
+    --purple-dim: rgba(124,58,237,0.1);
+    --cyan: #0891b2;
+    --cyan-dim: rgba(8,145,178,0.1);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  .page { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+
+  /* ── Hero ── */
+  .hero {
+    padding: 80px 0 64px;
+    text-align: center;
+    position: relative;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 70% 50% at 50% 0%, rgba(59,130,246,0.12) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--accent-glow);
+    border: 1px solid rgba(59,130,246,0.3);
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-bottom: 24px;
+  }
+  .hero h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(2.4rem, 5vw, 3.8rem);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    margin-bottom: 20px;
+    text-wrap: balance;
+  }
+  .hero h1 em { font-style: normal; color: var(--accent); }
+  .hero-sub {
+    font-size: 1.1rem;
+    color: var(--muted);
+    max-width: 620px;
+    margin: 0 auto 40px;
+    text-wrap: balance;
+  }
+  .hero-stats {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .stat-chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 110px;
+  }
+  .stat-chip strong {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .stat-chip span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+  /* ── Section ── */
+  section { padding: 64px 0; border-top: 1px solid var(--border); }
+  .section-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    margin-bottom: 12px;
+    text-wrap: balance;
+  }
+  .lead { font-size: 1.05rem; color: var(--muted); max-width: 680px; margin-bottom: 40px; }
+
+  /* ── Problem ── */
+  .problem-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+  .problem-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .problem-card .icon { font-size: 1.4rem; margin-bottom: 10px; }
+  .problem-card h3 { font-size: 0.9rem; font-weight: 600; margin-bottom: 6px; }
+  .problem-card p { font-size: 0.85rem; color: var(--muted); line-height: 1.5; }
+
+  /* ── Tools grid ── */
+  .tools-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+  .tool-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+  .tool-icon {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+  }
+  .tool-card h3 { font-size: 0.88rem; font-weight: 600; margin-bottom: 3px; }
+  .tool-card p { font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
+  .t-green { background: var(--green-dim); }
+  .t-blue { background: var(--accent-glow); }
+  .t-amber { background: var(--amber-dim); }
+  .t-red { background: var(--red-dim); }
+  .t-purple { background: var(--purple-dim); }
+  .t-cyan { background: var(--cyan-dim); }
+
+  /* ── Zero overhead ── */
+  .arch-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px 32px;
+    margin-bottom: 16px;
+  }
+  .arch-block h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
+  .arch-block p { font-size: 0.9rem; color: var(--muted); }
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82em;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: var(--cyan);
+  }
+  pre {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    overflow-x: auto;
+    color: var(--text);
+    line-height: 1.6;
+    margin: 20px 0;
+  }
+  .pre-comment { color: var(--muted); }
+  .pre-key { color: var(--cyan); }
+  .pre-val { color: var(--green); }
+  .pre-str { color: var(--amber); }
+
+  /* ── Flow diagram ── */
+  .flow {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin: 32px 0;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .flow-node {
+    flex: 1;
+    min-width: 140px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 14px;
+    text-align: center;
+    position: relative;
+  }
+  .flow-node .fn-icon { font-size: 1.5rem; margin-bottom: 8px; }
+  .flow-node h4 { font-size: 0.8rem; font-weight: 600; margin-bottom: 4px; }
+  .flow-node p { font-size: 0.72rem; color: var(--muted); line-height: 1.4; }
+  .flow-arrow {
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    color: var(--muted);
+    font-size: 1.2rem;
+    flex-shrink: 0;
+  }
+
+  /* ── AI section ── */
+  .ai-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 620px) { .ai-two-col { grid-template-columns: 1fr; } }
+  .ai-col {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+  }
+  .ai-col h3 { font-size: 1rem; font-weight: 600; margin-bottom: 12px; }
+  .ai-col ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .ai-col li { display: flex; gap: 10px; font-size: 0.88rem; }
+  .ai-col li::before { content: '→'; color: var(--accent); flex-shrink: 0; }
+  .ai-highlight {
+    background: var(--accent-glow);
+    border: 1px solid rgba(59,130,246,0.3);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-top: 16px;
+    font-size: 0.88rem;
+    color: var(--text);
+    font-style: italic;
+  }
+
+  /* ── Standalone value ── */
+  .value-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-top: 32px; }
+  .value-card {
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid var(--border);
+  }
+  .value-card .vc-label { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+  .value-card p { font-size: 0.82rem; color: var(--muted); line-height: 1.5; }
+
+  /* ── Scale section ── */
+  .scale-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+  .scale-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px 24px;
+  }
+  .scale-card .phase { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+  .scale-card h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
+  .scale-card p { font-size: 0.83rem; color: var(--muted); line-height: 1.5; }
+  .phase-1 { color: var(--green); }
+  .phase-2 { color: var(--accent); }
+  .phase-3 { color: var(--amber); }
+  .phase-4 { color: var(--purple); }
+
+  /* ── Support workflow ── */
+  .workflow { display: flex; flex-direction: column; gap: 0; position: relative; padding-left: 28px; margin: 24px 0; }
+  .workflow::before {
+    content: '';
+    position: absolute;
+    left: 9px; top: 16px; bottom: 16px;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--accent), var(--purple));
+    border-radius: 2px;
+  }
+  .wf-step { display: flex; gap: 16px; align-items: flex-start; padding: 12px 0; }
+  .wf-dot {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+    margin-left: -28px;
+    border: 2px solid var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: white;
+    font-family: 'Syne', sans-serif;
+  }
+  .wf-content h4 { font-size: 0.88rem; font-weight: 600; margin-bottom: 3px; }
+  .wf-content p { font-size: 0.82rem; color: var(--muted); line-height: 1.5; }
+
+  /* ── Big quote ── */
+  .big-quote {
+    background: var(--surface);
+    border-left: 4px solid var(--accent);
+    border-radius: 0 12px 12px 0;
+    padding: 24px 28px;
+    margin: 32px 0;
+  }
+  .big-quote p { font-size: 1.05rem; line-height: 1.65; font-style: italic; color: var(--text); }
+  .big-quote cite { display: block; margin-top: 10px; font-size: 0.82rem; color: var(--muted); font-style: normal; }
+
+  /* ── Cost section ── */
+  .cost-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 32px; }
+  @media (max-width: 560px) { .cost-compare { grid-template-columns: 1fr; } }
+  .cost-old, .cost-new {
+    border-radius: 12px;
+    padding: 24px;
+    border: 1px solid var(--border);
+  }
+  .cost-old { background: var(--red-dim); }
+  .cost-new { background: var(--green-dim); }
+  .cost-old h3, .cost-new h3 { font-size: 0.88rem; font-weight: 600; margin-bottom: 14px; }
+  .cost-old h3 { color: var(--red); }
+  .cost-new h3 { color: var(--green); }
+  .cost-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .cost-list li { font-size: 0.83rem; display: flex; gap: 8px; align-items: flex-start; }
+  .cost-list li::before { flex-shrink: 0; margin-top: 2px; }
+  .cost-old .cost-list li::before { content: '✕'; color: var(--red); }
+  .cost-new .cost-list li::before { content: '✓'; color: var(--green); }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center;
+    padding: 48px 0 64px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.82rem;
+  }
+  footer strong { color: var(--text); }
+</style>
+
+<!-- ── HERO ── -->
+<div class="page">
+  <div class="hero">
+    <div class="hero-eyebrow">🐞 ui-platform-elements · src/base/</div>
+    <h1>The <em>RUF Debug Suite</em><br>is embedded intelligence<br>for your web components</h1>
+    <p class="hero-sub">12 zero-overhead diagnostic tools built directly into the base element mixin. One flag activates them. No builds, no deploys, no live sessions — just real data when you need it.</p>
+    <div class="hero-stats">
+      <div class="stat-chip"><strong>12</strong><span>Tools</span></div>
+      <div class="stat-chip"><strong>~0ns</strong><span>Default Cost</span></div>
+      <div class="stat-chip"><strong>1 flag</strong><span>Activation</span></div>
+      <div class="stat-chip"><strong>86</strong><span>Elements Covered</span></div>
+      <div class="stat-chip"><strong>0</strong><span>Dev Deploys</span></div>
+    </div>
+  </div>
+
+  <!-- ── THE PROBLEM ── -->
+  <section>
+    <div class="section-label">The Problem</div>
+    <h2>Production issues die in the dark</h2>
+    <p class="lead">Customers report performance problems, mysterious crashes, and blank screens — but support can't reproduce them. DevTools aren't available. Logs don't exist. The cost of each support loop is enormous.</p>
+    <div class="problem-grid">
+      <div class="problem-card">
+        <div class="icon">🔕</div>
+        <h3>Silent failures</h3>
+        <p>Component crashes render blank without context. No error propagation, no stack trace surfaced to the user.</p>
+      </div>
+      <div class="problem-card">
+        <div class="icon">📉</div>
+        <h3>Invisible slowness</h3>
+        <p>Pages feel slow but there's no TTI data, no render timeline, no way to know which component is the culprit.</p>
+      </div>
+      <div class="problem-card">
+        <div class="icon">🔄</div>
+        <h3>Unexplained re-renders</h3>
+        <p>Components re-render dozens of times per interaction. Nobody knows why because property change history doesn't exist.</p>
+      </div>
+      <div class="problem-card">
+        <div class="icon">📡</div>
+        <h3>Opaque API calls</h3>
+        <p>Falcor requests are form-encoded. Network tabs show blobs, not what entity type or operation was actually requested.</p>
+      </div>
+      <div class="problem-card">
+        <div class="icon">🔁</div>
+        <h3>Circular update storms</h3>
+        <p>Component A triggers B which triggers A. The page thrashes. Nobody can trace the cycle without a graph.</p>
+      </div>
+      <div class="problem-card">
+        <div class="icon">💸</div>
+        <h3>High support cost</h3>
+        <p>Each issue requires a live session, screen share, and often a special build. Slow, expensive, unscalable.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── WHAT WE BUILT ── -->
+  <section>
+    <div class="section-label">What We Built</div>
+    <h2>12 tools. One mixin. Zero effort per element.</h2>
+    <p class="lead">Every tool is embedded in <code>RufElement</code> — the base mixin all 86 components extend. No per-element work. No separate imports. Globally activated, globally deactivated.</p>
+    <div class="tools-grid">
+      <div class="tool-card">
+        <div class="tool-icon t-red">🛡️</div>
+        <div>
+          <h3>ruf-error-boundary</h3>
+          <p>Wraps <code>performUpdate</code> in try/catch. Logs crashes with stack traces. Renders graceful fallback. Auto-POSTs to support endpoint on critical failure.</p>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-icon t-amber">⚡</div>
+        <div>
+          <h3>ruf-perf</h3>
+          <p>Per-component TTI tracking. Slow render log (>500ms) with call stacks. Grade A–F health per component.</p>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-icon t-blue">🔍</div>
+        <div>
+          <h3>ruf-prop-audit</h3>
+          <p>Traces every property change. Detects property thrash (>5×/sec). Records render reasons with old→new value summaries.</p>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-icon t-purple">🔮</div>
+        <div>
+          <h3>ruf-cycle-detector</h3>
+          <p>Builds a directed update graph. Runs DFS on every render cycle. Surfaces circular chains like <code>A → B → A</code>.</p>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-icon t-green">📊</div>
+        <div>
+          <h3>ruf-vitals</h3>
+          <p>LCP, CLS, INP via PerformanceObserver. Long Task detection. Good/needs/poor colour coding mapped to Web Vitals thresholds.</p>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-icon t-cyan">🌐</div>
+        <div>
+          <h3>ruf-network</h3>
+          <p>Patches fetch + XHR. Decodes Falcor POST and GET bodies — exposes entity type, domain, operation, pagination, sort, filters.</p>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-icon t-amber">📡</div>
+        <div>
+          <h3>ruf-aci-tracer</h3>
+          <p>Records every ACI dispatch with timestamp and source element. Frequency table flags actions >20 dispatches.</p>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-icon t-red">🐌</div>
+        <div>
+          <h3>ruf-slow-api</h3>
+          <p>Patches DataObjectManager. Logs calls exceeding threshold with operation name, duration, and initiating component.</p>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-icon t-purple">💾</div>
+        <div>
+          <h3>ruf-memory</h3>
+          <p>Mount/unmount counters via FinalizationRegistry. Detects mount storms (>20 mounts/sec). Flags potential memory leaks.</p>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-icon t-blue">🖥️</div>
+        <div>
+          <h3>ruf-console</h3>
+          <p>Patches console.error/warn into a 200-entry ring buffer. Timestamped. Searchable. Available in report even after page refresh.</p>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-icon t-green">🎯</div>
+        <div>
+          <h3>ruf-inspector</h3>
+          <p>Hover badge overlays live component state snapshot — properties, element tag, component health grade, rendered dimensions.</p>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-icon t-amber">🌳</div>
+        <div>
+          <h3>DOM health (panel)</h3>
+          <p>Snapshot-time DOM node count with custom element breakdown. Flags when >1,500 nodes. Health score deductions applied.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── ZERO OVERHEAD ── -->
+  <section>
+    <div class="section-label">Architecture</div>
+    <h2>Zero overhead is not a promise — it's a constraint</h2>
+    <p class="lead">Every tool is statically imported once at module parse time, but instruments nothing until its flag is set. The per-element cost when debug is off: approximately 40 property reads in <code>connectedCallback</code> — unmeasurable at ~100–300ns.</p>
+
+    <pre><span class="pre-comment">// Three ways to activate — none require a deploy</span>
+
+<span class="pre-comment">// 1. Browser console (developer / support with DevTools)</span>
+<span class="pre-key">window</span>.__RUF_DEBUG__ = <span class="pre-val">true</span>
+
+<span class="pre-comment">// 2. Selective — enable only what you need</span>
+<span class="pre-key">window</span>.__RUF_DEBUG__ = { perf: <span class="pre-val">true</span>, network: <span class="pre-val">true</span>, aciTracer: <span class="pre-val">true</span> }
+
+<span class="pre-comment">// 3. Tenant flag — support sets it in globalSettings, no console needed</span>
+mainApp.globalSettings.rufDebugEnabled = <span class="pre-val">true</span>
+mainApp.globalSettings.rufCrashEndpoint = <span class="pre-str">'https://support.syndigo.com/ruf-ingest'</span></pre>
+
+    <div class="arch-block">
+      <h3>Why static imports, not dynamic ones</h3>
+      <p>Static imports parse once and are cached by the browser module graph. Dynamic imports on activation would introduce a network round-trip at exactly the wrong moment — when a customer is already hitting a problem. The parse cost of 12 small modules is paid once at startup; the instrumentation cost is zero until needed.</p>
+    </div>
+    <div class="arch-block">
+      <h3>Why embedded in the mixin, not a separate package</h3>
+      <p>All 86 elements extend <code>RufElement</code>. Embedding there gives universal coverage with no per-element changes, no new imports, and no coordination cost. A separate debug package would require opt-in per element — that's 86 opportunities for coverage gaps.</p>
+    </div>
+  </section>
+
+  <!-- ── SUPPORT WORKFLOW ── -->
+  <section>
+    <div class="section-label">Support Workflow</div>
+    <h2>No live session. No special build. Just a report.</h2>
+    <p class="lead">The entire support workflow is designed for asynchronous operation. Support enables the flag; the customer browses; the panel captures everything; the customer downloads a file. That's the whole loop.</p>
+    <div class="workflow">
+      <div class="wf-step">
+        <div class="wf-dot">1</div>
+        <div class="wf-content">
+          <h4>Customer reports issue</h4>
+          <p>Support receives a vague complaint — "the page is slow", "it crashed", "the grid won't load".</p>
+        </div>
+      </div>
+      <div class="wf-step">
+        <div class="wf-dot">2</div>
+        <div class="wf-content">
+          <h4>Support enables the flag</h4>
+          <p>One config change: <code>rufDebugEnabled = true</code> in the tenant's globalSettings. No code change. No deploy. Takes 30 seconds.</p>
+        </div>
+      </div>
+      <div class="wf-step">
+        <div class="wf-dot">3</div>
+        <div class="wf-content">
+          <h4>Customer browses normally</h4>
+          <p>The 🐞 badge appears in the corner. All 12 tools are now capturing data silently. Customer does exactly what caused the problem.</p>
+        </div>
+      </div>
+      <div class="wf-step">
+        <div class="wf-dot">4</div>
+        <div class="wf-content">
+          <h4>Customer downloads the report</h4>
+          <p>One click. The panel generates a structured JSON + self-contained HTML report. The customer emails or uploads it. Support has everything.</p>
+        </div>
+      </div>
+      <div class="wf-step">
+        <div class="wf-dot">5</div>
+        <div class="wf-content">
+          <h4>Support (or AI) reads the Pinpoint tab</h4>
+          <p>The Pinpoint tab aggregates crashes, storms, slow renders, thrash, cycles, and network errors — each with a file path, line number, and a plain-English recommendation.</p>
+        </div>
+      </div>
+      <div class="wf-step">
+        <div class="wf-dot">6</div>
+        <div class="wf-content">
+          <h4>Engineer fixes the root cause</h4>
+          <p>No guessing. The issue has a file, a line, a recommendation, and a list of related components. The fix is a targeted PR, not a fishing expedition.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── AI LEVERAGE ── -->
+  <section>
+    <div class="section-label">AI Integration</div>
+    <h2>Where AI can't go — and how we fill that gap</h2>
+    <p class="lead">AI models don't run in the browser. They can't see what's happening at runtime. They can read code, but code doesn't tell you which component is slow, which API call is timing out, or which property is thrashing — in <em>this customer's session, right now</em>. RUF is the eyes AI doesn't have.</p>
+
+    <div class="ai-two-col">
+      <div class="ai-col">
+        <h3>🤖 What AI does well</h3>
+        <ul>
+          <li>Reads source code and understands architecture</li>
+          <li>Suggests fixes from patterns and best practices</li>
+          <li>Generates tests and documentation</li>
+          <li>Reviews PRs for correctness and style</li>
+          <li>Answers questions about the codebase</li>
+        </ul>
+        <div class="ai-highlight">AI is excellent at static analysis — but it sees a snapshot of code, not a running system.</div>
+      </div>
+      <div class="ai-col">
+        <h3>🔍 What RUF captures that AI can't</h3>
+        <ul>
+          <li>Which component rendered 47 times in one interaction</li>
+          <li>Which Falcor call fetched 12,000 entity records</li>
+          <li>The exact property that triggered a re-render chain</li>
+          <li>That <code>pebble-grid → pebble-toolbar → pebble-grid</code> is a cycle</li>
+          <li>LCP was 8.2 seconds because of one synchronous DOM operation</li>
+        </ul>
+        <div class="ai-highlight">RUF captures runtime truth. AI can't invent this data — it needs to receive it.</div>
+      </div>
+    </div>
+
+    <div class="big-quote">
+      <p>"The Fix Table export is a direct Claude input. Every issue entry includes a file path, a line number extracted from the call stack, a ready-to-paste prompt, and a list of related components — enough for Claude to open the right file, understand the context, and apply a targeted fix without a single clarifying question."</p>
+    </div>
+
+    <div class="flow">
+      <div class="flow-node">
+        <div class="fn-icon">🌐</div>
+        <h4>Runtime</h4>
+        <p>Customer session captures real performance, crash, and network data</p>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node">
+        <div class="fn-icon">📋</div>
+        <h4>Report</h4>
+        <p>Panel generates structured JSON with file paths, stacks, and issue types</p>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node">
+        <div class="fn-icon">🤖</div>
+        <h4>AI reads</h4>
+        <p>Claude reads Fix Table: file, line, recommendation, related components</p>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node">
+        <div class="fn-icon">🔧</div>
+        <h4>Targeted fix</h4>
+        <p>PR with specific changes at specific lines. No guesswork.</p>
+      </div>
+    </div>
+
+    <div class="arch-block">
+      <h3>Avoiding recurring AI cost</h3>
+      <p>RUF does all the heavy lifting in the browser — classification, scoring, stack parsing, Falcor decoding, cycle detection, health grading. By the time data reaches AI, it's already structured. The <code>claudePrompt</code> field in every fix table entry is a single sentence. AI reads the file at the right line and makes one targeted change. No exploration loop, no multi-turn disambiguation. One structured input → one correct fix.</p>
+    </div>
+  </section>
+
+  <!-- ── WITHOUT AI ── -->
+  <section>
+    <div class="section-label">Standalone Value</div>
+    <h2>Even without AI, it solves real problems</h2>
+    <p class="lead">The suite was designed to be fully useful to a support engineer or developer with no AI access. The Pinpoint tab makes every insight human-readable. The HTML report opens in any browser. The history diff answers "it worked yesterday".</p>
+    <div class="value-row">
+      <div class="value-card" style="background:var(--green-dim);border-color:rgba(34,197,94,0.2);">
+        <div class="vc-label" style="color:var(--green)">Health Score</div>
+        <p>A–F grade for the full page, derived from vitals, crashes, storms, network errors, and property thrash. One number that tells you if this session is healthy.</p>
+      </div>
+      <div class="value-card" style="background:var(--blue-dim,var(--accent-glow));border-color:rgba(59,130,246,0.2);">
+        <div class="vc-label" style="color:var(--accent)">Pinpoint Tab</div>
+        <p>Aggregates all issues from all tools. Each issue has a file path, severity, fix recommendation, and a filtered call stack showing only app code.</p>
+      </div>
+      <div class="value-card" style="background:var(--amber-dim);border-color:rgba(245,158,11,0.2);">
+        <div class="vc-label" style="color:var(--amber)">History Diff</div>
+        <p>Select any two snapshots from up to 20 saved sessions. The diff view shows which metrics improved, which degraded, and which components appeared or disappeared.</p>
+      </div>
+      <div class="value-card" style="background:var(--purple-dim);border-color:rgba(167,139,250,0.2);">
+        <div class="vc-label" style="color:var(--purple)">Falcor Decode</div>
+        <p>Every Falcor request (POST or GET) is decoded to human-readable entity type, domain, operation, pagination, sort config, and filters. No more reading raw paths.</p>
+      </div>
+      <div class="value-card" style="background:var(--red-dim);border-color:rgba(239,68,68,0.2);">
+        <div class="vc-label" style="color:var(--red)">Crash Auto-POST</div>
+        <p>On a critical crash, the report is automatically sent to a configurable endpoint. Support receives the report before the customer has even picked up the phone.</p>
+      </div>
+      <div class="value-card" style="background:var(--cyan-dim);border-color:rgba(34,211,238,0.2);">
+        <div class="vc-label" style="color:var(--cyan)">Import Mode</div>
+        <p>Support can import a customer-sent report and browse it in the full panel — all 12 tabs, all data — without being on the customer's machine.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── COST REDUCTION ── -->
+  <section>
+    <div class="section-label">Cost Model</div>
+    <h2>Eliminating the most expensive parts of support</h2>
+    <p class="lead">The traditional support-to-fix cycle requires skilled engineers, live sessions, and special builds. RUF restructures this into an async, data-driven workflow that scales with team size without proportional cost.</p>
+    <div class="cost-compare">
+      <div class="cost-old">
+        <h3>Before RUF</h3>
+        <ul class="cost-list">
+          <li>Live screen share required for every issue</li>
+          <li>Special debug builds pushed to customer environment</li>
+          <li>Senior engineer time spent on reproduction</li>
+          <li>Issues closed as "can't reproduce" — customer frustrated</li>
+          <li>No cross-session comparison — every issue starts from zero</li>
+          <li>Network calls opaque — nobody knows what Falcor asked for</li>
+        </ul>
+      </div>
+      <div class="cost-new">
+        <h3>With RUF</h3>
+        <ul class="cost-list">
+          <li>Customer browses, downloads report, emails it</li>
+          <li>Flag toggle in config — no build, no deploy</li>
+          <li>Pinpoint tab does the triage — support reads a summary</li>
+          <li>Session history enables regression identification</li>
+          <li>History diff answers before/after comparisons instantly</li>
+          <li>Falcor decoded automatically — entity types visible in the panel</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── SCALE ── -->
+  <section>
+    <div class="section-label">Scalability</div>
+    <h2>The same idea, everywhere a component tree exists</h2>
+    <p class="lead">The pattern — zero-overhead base mixin instrumentation, tenant-activatable, with a downloadable structured report — is framework-agnostic. The implementation is specific to Lit/Polymer; the architecture isn't.</p>
+    <div class="scale-grid">
+      <div class="scale-card">
+        <div class="phase phase-1">Phase 1 — Now</div>
+        <h3>Lit 3 + Polymer 3</h3>
+        <p>RUF is live in <code>ui-platform-elements</code>. 86 components covered automatically. Activated via <code>rufDebugEnabled</code>.</p>
+      </div>
+      <div class="scale-card">
+        <div class="phase phase-2">Phase 2 — Generic Lit</div>
+        <h3>Any LitElement codebase</h3>
+        <p>Extract the framework-specific hooks into a standalone package: <code>lit-debug-suite</code>. Any team using Lit can drop it into their base element in one import.</p>
+      </div>
+      <div class="scale-card">
+        <div class="phase phase-3">Phase 3 — React</div>
+        <h3>React + custom hooks</h3>
+        <p>The same concepts map to React DevTools hooks, Profiler API, and custom hook wrappers. A <code>useRufDebug</code> provider wraps the app root. Same report format.</p>
+      </div>
+      <div class="scale-card">
+        <div class="phase phase-4">Phase 4 — VSCode Extension</div>
+        <h3>IDE integration</h3>
+        <p>A VSCode extension reads a locally saved report, highlights files at the issue line numbers, opens the component source, and suggests the fix — directly in the editor.</p>
+      </div>
+    </div>
+
+    <div class="big-quote" style="margin-top:32px;">
+      <p>"A developer never has to open the browser to understand a production issue. They open the report in VSCode, and the extension walks them from the symptom to the exact line — the same way a debugger walks from a breakpoint to a stack frame, but for real production sessions."</p>
+    </div>
+  </section>
+
+  <!-- ── UNIVERSALITY ── -->
+  <section>
+    <div class="section-label">Universal Principle</div>
+    <h2>The model, not the implementation</h2>
+    <p class="lead">What makes RUF valuable isn't its 12 tools — it's the pattern: intercept at the base layer, collect without overhead, surface structured data that humans and AI can both act on.</p>
+    <div class="tools-grid">
+      <div class="tool-card">
+        <div class="tool-icon t-green">🏗️</div>
+        <div>
+          <h3>Intercept at the base layer</h3>
+          <p>Every framework has a base class or mixin point. That's where to instrument — not in individual components, not in a separate service, not in infrastructure.</p>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-icon t-blue">🔇</div>
+        <div>
+          <h3>Default-silent, activatable</h3>
+          <p>Production code carries the instrumentation but never runs it. A flag — from a config, a URL param, or a session setting — switches it on. No code change. No deploy.</p>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-icon t-amber">📦</div>
+        <div>
+          <h3>Structured, not logged</h3>
+          <p>Every tool writes to a typed global (<code>window.__RUF_*</code>). The panel reads from these globals. AI reads from the export. Nothing is just a <code>console.log</code>.</p>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-icon t-purple">🎯</div>
+        <div>
+          <h3>Actionable, not informational</h3>
+          <p>Every issue in the Pinpoint tab has a recommendation, a file path, and a line number. The output is a work item, not a data dump.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <strong>RUF Debug Suite</strong> — ui-platform-elements · src/base/<br>
+    <span style="margin-top:6px;display:block;">Built on the tier-1 branch · 12 tools · 7 development rounds · September 2026</span>
+  </footer>
+</div>

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LDS Debug Panel — Dev Test</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; background: #1a1a2e; color: #eee; padding: 20px; }
+    .demo-elements { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+    button { padding: 8px 16px; border-radius: 4px; border: 1px solid #555; background: #2a2a4e; color: #eee; cursor: pointer; }
+    button:hover { background: #3a3a6e; }
+    .info { font-size: 13px; color: #aaa; margin: 8px 0; }
+  </style>
+</head>
+<body>
+  <h2>LDS Debug Panel — Dev Harness</h2>
+  <p class="info">Open this file via a local dev server (e.g. <code>npx serve .</code>) so ES module imports resolve correctly.</p>
+
+  <div class="demo-elements">
+    <button id="enableDebug">Enable LDS Debug</button>
+    <button id="disableDebug">Disable LDS Debug</button>
+    <button id="fireError">Fire an error</button>
+    <button id="fireSlow">Simulate slow render</button>
+    <button id="fireNet">Fake network request</button>
+  </div>
+
+  <div id="status" class="info">Debug: OFF</div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "lit": "https://cdn.jsdelivr.net/npm/lit@3/index.js",
+        "lit/": "https://cdn.jsdelivr.net/npm/lit@3/",
+        "@lit/reactive-element": "https://cdn.jsdelivr.net/npm/@lit/reactive-element@2/reactive-element.js",
+        "@lit/reactive-element/": "https://cdn.jsdelivr.net/npm/@lit/reactive-element@2/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    // Seed some debug globals before the panel loads
+    window.__LDS_DEBUG__  = false;
+    window.__LDS_HISTORY__ = [];
+
+    // Optional hooks
+    window.__LDS_TAG_TO_FILE__    = (tag) => `src/elements/${tag}/${tag}.js`;
+    window.__LDS_CONTEXT_GETTER__ = (el)  => ({ env: 'dev-harness', tag: el.tagName });
+
+    // Load the panel (registers <lds-debug-panel> custom element)
+    import('../src/panel/LdsDebugPanel.js').catch(e => {
+      console.error('[test] Failed to load panel:', e);
+      document.getElementById('status').textContent = 'ERROR loading panel: ' + e.message;
+    });
+
+    // Seed some fake data for the panel to render
+    function seedFakeData() {
+      window.__LDS_PERF_LOG__    = window.__LDS_PERF_LOG__ || [];
+      window.__LDS_ERROR_LOG__   = window.__LDS_ERROR_LOG__ || [];
+      window.__LDS_CONSOLE_LOG__ = window.__LDS_CONSOLE_LOG__ || [];
+      window.__LDS_NETWORK_LOG__ = window.__LDS_NETWORK_LOG__ || [];
+      window.__LDS_EVENT_LOG__   = window.__LDS_EVENT_LOG__ || [];
+
+      window.__LDS_PERF_LOG__.push({ tag: 'demo-card', elapsed: 34, ts: Date.now() });
+      window.__LDS_PERF_LOG__.push({ tag: 'demo-header', elapsed: 12, ts: Date.now() });
+
+      window.__LDS_ERROR_LOG__.push({ tag: 'demo-card', message: 'Test error message', ts: Date.now() });
+
+      window.__LDS_CONSOLE_LOG__.push({ level: 'warn', args: ['Demo console warning'], ts: Date.now() });
+
+      window.__LDS_NETWORK_LOG__.push({
+        url: 'https://api.example.com/model/json?paths=[["catalog","1"]]',
+        method: 'POST',
+        status: 200,
+        duration: 145,
+        decoded: { protocol: 'falcor', method: 'get', callPath: '[catalog,1]' },
+        ts: Date.now(),
+      });
+
+      window.__LDS_EVENT_LOG__ = window.__LDS_EVENT_LOG__ || { timeline: [], freq: {} };
+      window.__LDS_EVENT_LOG__.timeline = [
+        { name: 'catalog-loaded', from: 'demo-card', detail: { count: 5 }, ts: Date.now() }
+      ];
+      window.__LDS_EVENT_LOG__.freq = { 'catalog-loaded': 3 };
+    }
+
+    // Enable / disable debug
+    document.getElementById('enableDebug').addEventListener('click', () => {
+      window.__LDS_DEBUG__ = true;
+      seedFakeData();
+      // Mount the panel
+      if (!document.querySelector('lds-debug-panel')) {
+        const panel = document.createElement('lds-debug-panel');
+        document.body.appendChild(panel);
+      }
+      document.getElementById('status').textContent = 'Debug: ON — <lds-debug-panel> mounted';
+    });
+
+    document.getElementById('disableDebug').addEventListener('click', () => {
+      window.__LDS_DEBUG__ = false;
+      const panel = document.querySelector('lds-debug-panel');
+      if (panel) panel.remove();
+      document.getElementById('status').textContent = 'Debug: OFF';
+    });
+
+    document.getElementById('fireError').addEventListener('click', () => {
+      window.__LDS_ERROR_LOG__ = window.__LDS_ERROR_LOG__ || [];
+      window.__LDS_ERROR_LOG__.push({ tag: 'demo-card', message: 'Manually fired error at ' + new Date().toISOString(), ts: Date.now() });
+      document.getElementById('status').textContent = 'Error pushed to __LDS_ERROR_LOG__ (' + window.__LDS_ERROR_LOG__.length + ' total)';
+    });
+
+    document.getElementById('fireSlow').addEventListener('click', () => {
+      window.__LDS_PERF_LOG__ = window.__LDS_PERF_LOG__ || [];
+      window.__LDS_PERF_LOG__.push({ tag: 'demo-slow', elapsed: 800, ts: Date.now() });
+      document.getElementById('status').textContent = 'Slow render pushed to __LDS_PERF_LOG__';
+    });
+
+    document.getElementById('fireNet').addEventListener('click', () => {
+      // Simulate a fetch so the network interceptor picks it up (if loaded)
+      fetch('https://jsonplaceholder.typicode.com/todos/1').catch(() => {});
+      document.getElementById('status').textContent = 'Fake fetch fired — check Network tab';
+    });
+  </script>
+</body>
+</html>

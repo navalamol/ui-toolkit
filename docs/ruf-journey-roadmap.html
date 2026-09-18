@@ -1,0 +1,836 @@
+<title>RUF Debug — Origin & Roadmap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --bg: #060a12;
+    --surface: #0d1117;
+    --surface2: #161b26;
+    --border: #1e2d45;
+    --text: #dde6f4;
+    --muted: #7a8aa8;
+    --accent: #4f8ef7;
+    --accent-glow: rgba(79,142,247,0.14);
+    --green: #3dd68c;
+    --green-dim: rgba(61,214,140,0.1);
+    --amber: #fbbf24;
+    --amber-dim: rgba(251,191,36,0.1);
+    --red: #f87171;
+    --red-dim: rgba(248,113,113,0.1);
+    --purple: #c084fc;
+    --purple-dim: rgba(192,132,252,0.1);
+    --cyan: #67e8f9;
+    --cyan-dim: rgba(103,232,249,0.1);
+    --orange: #fb923c;
+    --orange-dim: rgba(251,146,60,0.1);
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f2f6ff;
+      --surface: #ffffff;
+      --surface2: #f8faff;
+      --border: #d8e2f4;
+      --text: #0f172a;
+      --muted: #5c6d8a;
+      --accent: #2563eb;
+      --accent-glow: rgba(37,99,235,0.1);
+      --green: #16a34a;
+      --green-dim: rgba(22,163,74,0.1);
+      --amber: #d97706;
+      --amber-dim: rgba(217,119,6,0.1);
+      --red: #dc2626;
+      --red-dim: rgba(220,38,38,0.1);
+      --purple: #7c3aed;
+      --purple-dim: rgba(124,58,237,0.1);
+      --cyan: #0891b2;
+      --cyan-dim: rgba(8,145,178,0.1);
+      --orange: #ea580c;
+      --orange-dim: rgba(234,88,12,0.1);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f2f6ff;
+    --surface: #ffffff;
+    --surface2: #f8faff;
+    --border: #d8e2f4;
+    --text: #0f172a;
+    --muted: #5c6d8a;
+    --accent: #2563eb;
+    --accent-glow: rgba(37,99,235,0.1);
+    --green: #16a34a;
+    --green-dim: rgba(22,163,74,0.1);
+    --amber: #d97706;
+    --amber-dim: rgba(217,119,6,0.1);
+    --red: #dc2626;
+    --red-dim: rgba(220,38,38,0.1);
+    --purple: #7c3aed;
+    --purple-dim: rgba(124,58,237,0.1);
+    --cyan: #0891b2;
+    --cyan-dim: rgba(8,145,178,0.1);
+    --orange: #ea580c;
+    --orange-dim: rgba(234,88,12,0.1);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  .page { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+
+  /* ── Hero ── */
+  .hero {
+    padding: 80px 0 64px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 80% 60% at 20% -10%, rgba(79,142,247,0.12) 0%, transparent 60%),
+                radial-gradient(ellipse 50% 40% at 80% 20%, rgba(192,132,252,0.08) 0%, transparent 50%);
+    pointer-events: none;
+  }
+  .hero-eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 20px;
+  }
+  .hero h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(2.2rem, 5vw, 3.6rem);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    margin-bottom: 20px;
+    text-wrap: balance;
+    max-width: 720px;
+  }
+  .hero h1 .accent { color: var(--accent); }
+  .hero h1 .accent2 { color: var(--purple); }
+  .hero-sub { font-size: 1rem; color: var(--muted); max-width: 580px; margin-bottom: 0; }
+
+  section { padding: 64px 0; border-top: 1px solid var(--border); }
+  .section-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    margin-bottom: 12px;
+    text-wrap: balance;
+  }
+  .lead { font-size: 1rem; color: var(--muted); max-width: 680px; margin-bottom: 40px; }
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82em;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: var(--cyan);
+  }
+
+  /* ── Origin Story ── */
+  .origin-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    position: relative;
+    margin-bottom: 20px;
+  }
+  .origin-block::before {
+    content: '"';
+    position: absolute;
+    top: 16px;
+    right: 24px;
+    font-family: 'Syne', sans-serif;
+    font-size: 4rem;
+    color: var(--border);
+    line-height: 1;
+  }
+  .origin-block h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+    color: var(--accent);
+  }
+  .origin-block p { font-size: 0.9rem; color: var(--text); line-height: 1.7; }
+  .origin-block p + p { margin-top: 10px; }
+
+  /* ── Timeline ── */
+  .timeline { position: relative; padding-left: 0; }
+  .tl-item {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 0 28px;
+    align-items: start;
+    margin-bottom: 4px;
+    position: relative;
+  }
+  .tl-left {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    padding-top: 20px;
+    position: relative;
+  }
+  .tl-left::after {
+    content: '';
+    position: absolute;
+    right: -14px;
+    top: 28px;
+    bottom: -4px;
+    width: 2px;
+    background: var(--border);
+  }
+  .tl-item:last-child .tl-left::after { display: none; }
+  .tl-dot {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    font-family: 'Syne', sans-serif;
+    flex-shrink: 0;
+    margin-right: -1px;
+    position: relative;
+    z-index: 1;
+  }
+  .tl-round { font-size: 0.62rem; color: var(--muted); text-align: right; margin-top: 4px; }
+  .tl-right {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 22px;
+    margin-bottom: 16px;
+  }
+  .tl-right h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .tl-right .tl-meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .tl-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+  .tl-right p { font-size: 0.85rem; color: var(--muted); line-height: 1.6; }
+  .tl-right p + p { margin-top: 6px; }
+  .tl-delivered { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
+  .tl-item-row { font-size: 0.8rem; display: flex; gap: 8px; }
+  .tl-item-row::before { content: '↳'; color: var(--accent); flex-shrink: 0; }
+
+  /* Round colors */
+  .r-origin { background: var(--accent-glow); color: var(--accent); border: 2px solid rgba(79,142,247,0.4); }
+  .r1 { background: var(--green-dim); color: var(--green); border: 2px solid rgba(61,214,140,0.4); }
+  .r2 { background: var(--cyan-dim); color: var(--cyan); border: 2px solid rgba(103,232,249,0.4); }
+  .r3 { background: var(--amber-dim); color: var(--amber); border: 2px solid rgba(251,191,36,0.4); }
+  .r4 { background: var(--purple-dim); color: var(--purple); border: 2px solid rgba(192,132,252,0.4); }
+  .r5 { background: var(--orange-dim); color: var(--orange); border: 2px solid rgba(251,146,60,0.4); }
+  .r6 { background: var(--red-dim); color: var(--red); border: 2px solid rgba(248,113,113,0.4); }
+  .r7 { background: var(--green-dim); color: var(--green); border: 2px solid rgba(61,214,140,0.4); }
+  .tag-green { background: var(--green-dim); color: var(--green); }
+  .tag-cyan { background: var(--cyan-dim); color: var(--cyan); }
+  .tag-amber { background: var(--amber-dim); color: var(--amber); }
+  .tag-purple { background: var(--purple-dim); color: var(--purple); }
+  .tag-orange { background: var(--orange-dim); color: var(--orange); }
+  .tag-red { background: var(--red-dim); color: var(--red); }
+  .tag-blue { background: var(--accent-glow); color: var(--accent); }
+
+  /* ── Insight blocks ── */
+  .insight {
+    background: var(--accent-glow);
+    border: 1px solid rgba(79,142,247,0.25);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin: 20px 0;
+    font-size: 0.88rem;
+    font-style: italic;
+    color: var(--text);
+  }
+  .insight strong { font-style: normal; color: var(--accent); }
+
+  /* ── Roadmap ── */
+  .roadmap-phases { display: flex; flex-direction: column; gap: 20px; margin-top: 32px; }
+  .phase-block {
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .phase-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--border);
+  }
+  .phase-num {
+    font-family: 'Syne', sans-serif;
+    font-size: 1rem;
+    font-weight: 800;
+    min-width: 32px;
+  }
+  .phase-header h3 { font-size: 0.95rem; font-weight: 600; }
+  .phase-status {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .status-done { background: var(--green-dim); color: var(--green); }
+  .status-next { background: var(--amber-dim); color: var(--amber); }
+  .status-future { background: var(--purple-dim); color: var(--purple); }
+  .status-vision { background: var(--cyan-dim); color: var(--cyan); }
+  .phase-body { padding: 18px 22px; }
+  .phase-body p { font-size: 0.88rem; color: var(--muted); margin-bottom: 14px; line-height: 1.6; }
+  .phase-items { display: flex; flex-direction: column; gap: 8px; }
+  .phase-item {
+    font-size: 0.83rem;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 10px;
+    align-items: start;
+  }
+  .phase-item .pi-title { font-weight: 600; color: var(--text); }
+  .phase-item .pi-desc { color: var(--muted); }
+
+  /* Phase backgrounds */
+  .pb-green { background: linear-gradient(135deg, var(--green-dim) 0%, var(--surface) 60%); }
+  .pb-cyan { background: linear-gradient(135deg, var(--cyan-dim) 0%, var(--surface) 60%); }
+  .pb-amber { background: linear-gradient(135deg, var(--amber-dim) 0%, var(--surface) 60%); }
+  .pb-purple { background: linear-gradient(135deg, var(--purple-dim) 0%, var(--surface) 60%); }
+  .pb-orange { background: linear-gradient(135deg, var(--orange-dim) 0%, var(--surface) 60%); }
+  .pb-red { background: linear-gradient(135deg, var(--red-dim) 0%, var(--surface) 60%); }
+  .pb-sky { background: linear-gradient(135deg, rgba(14,165,233,0.1) 0%, var(--surface) 60%); }
+
+  /* ── Vision section ── */
+  .vision-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 32px; }
+  .vision-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px;
+  }
+  .vision-card .vc-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+  }
+  .vision-card h3 { font-size: 0.92rem; font-weight: 600; margin-bottom: 8px; }
+  .vision-card p { font-size: 0.82rem; color: var(--muted); line-height: 1.5; }
+
+  /* ── North star ── */
+  .northstar {
+    background: linear-gradient(135deg, var(--accent-glow) 0%, var(--purple-dim) 100%);
+    border: 1px solid rgba(79,142,247,0.25);
+    border-radius: 20px;
+    padding: 40px 36px;
+    text-align: center;
+    margin: 48px 0 0;
+  }
+  .northstar h2 {
+    font-size: clamp(1.4rem, 3vw, 2rem);
+    margin-bottom: 14px;
+  }
+  .northstar p { font-size: 0.95rem; color: var(--muted); max-width: 600px; margin: 0 auto 0; }
+
+  footer {
+    text-align: center;
+    padding: 48px 0 64px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.82rem;
+  }
+  footer strong { color: var(--text); }
+
+  @media (max-width: 580px) {
+    .tl-item { grid-template-columns: 60px 1fr; gap: 0 16px; }
+    .tl-left::after { right: -8px; }
+  }
+</style>
+
+<div class="page">
+  <!-- ── HERO ── -->
+  <div class="hero">
+    <div class="hero-eyebrow">Origin Story · Journey · Roadmap</div>
+    <h1>From <span class="accent">"just show me<br>the live properties"</span><br>to a <span class="accent2">platform-wide<br>debug intelligence layer</span></h1>
+    <p class="hero-sub">How one small curiosity — wanting to inspect a running RUF element without opening DevTools — became a full observability suite embedded into the base mixin of 86 web components.</p>
+  </div>
+
+  <!-- ── ORIGIN ── -->
+  <section>
+    <div class="section-label">The Spark</div>
+    <h2>It started with a single question</h2>
+    <div class="origin-block">
+      <h3>The original idea</h3>
+      <p>The question was simple: "Can we see the live property values of a RUF component without opening Chrome DevTools and digging through the shadow DOM?" Every time a customer reported a weird state — a grid not refreshing, a dropdown showing stale options — support had to either reproduce it locally or schedule a screen share.</p>
+      <p>The answer was a hover badge. A small overlay that would appear on any RUF component when you moused over it, showing its current properties. That was <code>ruf-inspector.js</code>. And that was the end of "just one small thing."</p>
+    </div>
+    <div class="origin-block">
+      <h3>The first realization</h3>
+      <p>Building the inspector revealed something important: to show property values, you need to hook into the element's lifecycle. And if you're already hooked into the lifecycle, you can measure how long renders take. And if you're measuring renders, you can log the slow ones. And if you're logging slow ones, you need a place to put them — a structured store, not a console log.</p>
+      <p>The <em>pattern</em> emerged before the tools did: intercept at the base layer, store structured data, surface it on demand. Everything that came after is an expression of that pattern.</p>
+    </div>
+    <div class="insight">
+      <strong>Key insight:</strong> The value isn't in any single tool. It's in the architecture that makes every tool free — because the interception point is shared, and the activation is global.
+    </div>
+  </section>
+
+  <!-- ── JOURNEY TIMELINE ── -->
+  <section>
+    <div class="section-label">Evolution</div>
+    <h2>Seven rounds of building on one idea</h2>
+    <p class="lead">Each round answered a question that the previous round made possible to ask. The inspector revealed the need for perf. Perf revealed the need for cause. Cause revealed the need for AI routing. The suite grew by following the questions.</p>
+
+    <div class="timeline">
+
+      <!-- Origin -->
+      <div class="tl-item">
+        <div class="tl-left">
+          <div class="tl-dot r-origin">💡</div>
+          <div class="tl-round">Origin</div>
+        </div>
+        <div class="tl-right">
+          <h3>The Hover Inspector</h3>
+          <div class="tl-meta">
+            <span class="tl-tag tag-blue">ruf-inspector.js</span>
+          </div>
+          <p>A mouse-over badge that overlays the live property state of any RUF element. Simple, immediately useful, and the technical foundation for everything else — because it proved you could hook into the element lifecycle without changing any of the 86 components.</p>
+          <div class="tl-insight" style="margin-top:10px;font-size:0.8rem;color:var(--muted);font-style:italic;">"If we can read properties, we can measure them. If we can measure them, we can flag bad ones."</div>
+        </div>
+      </div>
+
+      <!-- Phase 1 -->
+      <div class="tl-item">
+        <div class="tl-left">
+          <div class="tl-dot r1">1</div>
+          <div class="tl-round">Phase 1</div>
+        </div>
+        <div class="tl-right">
+          <h3>Foundation — Zero-Overhead Base</h3>
+          <div class="tl-meta">
+            <span class="tl-tag tag-green">7 tools</span>
+            <span class="tl-tag tag-green">Master gate</span>
+          </div>
+          <p>The inspector became one of seven tools. Error boundary, perf tracker, ACI tracer, memory monitor, slow API logger, and prop audit were added alongside it — all wired into <code>ruf-element.js</code> with a single master flag.</p>
+          <p>The critical architectural decision: static imports that instrument nothing by default. The tools exist in the bundle; the instrumentation does not run until activated. This made it safe to ship to production.</p>
+          <div class="tl-delivered">
+            <div class="tl-item-row">ruf-error-boundary — crash catcher with fallback UI</div>
+            <div class="tl-item-row">ruf-perf — TTI per component tag</div>
+            <div class="tl-item-row">ruf-memory — mount/unmount counters via FinalizationRegistry</div>
+            <div class="tl-item-row">ruf-aci-tracer — ACI dispatch timeline</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 2 -->
+      <div class="tl-item">
+        <div class="tl-left">
+          <div class="tl-dot r2">2</div>
+          <div class="tl-round">Phase 2</div>
+        </div>
+        <div class="tl-right">
+          <h3>The Panel — Support Without DevTools</h3>
+          <div class="tl-meta">
+            <span class="tl-tag tag-cyan">ruf-debug-panel.js</span>
+            <span class="tl-tag tag-cyan">8 tabs</span>
+          </div>
+          <p>Tools are only useful if someone can read their output. A floating debug panel — the 🐞 badge — gave support teams and customers a way to see all data without needing DevTools. The panel's most important feature: the JSON download button.</p>
+          <p>For the first time, a customer could click one button and email support everything — errors, perf, memory, ACI events — as a structured file. No screen share. No reproduction session. Just a file.</p>
+          <div class="tl-delivered">
+            <div class="tl-item-row">ruf-console — console.error/warn ring buffer</div>
+            <div class="tl-item-row">ruf-debug-panel — floating badge, 8-tab panel, JSON download</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 2.5 -->
+      <div class="tl-item">
+        <div class="tl-left">
+          <div class="tl-dot r3">2.5</div>
+          <div class="tl-round">Phase 2.5</div>
+        </div>
+        <div class="tl-right">
+          <h3>Import, History & Pinpoint — Making Data Actionable</h3>
+          <div class="tl-meta">
+            <span class="tl-tag tag-amber">Pinpoint tab</span>
+            <span class="tl-tag tag-amber">Import mode</span>
+            <span class="tl-tag tag-amber">Fix Table</span>
+          </div>
+          <p>A downloaded JSON report is only useful if someone reads it and understands it. The Pinpoint tab changed this: instead of making engineers parse raw data, it aggregates all issues across all tools into a single prioritized list — each with a file path, severity, and a plain-English recommendation.</p>
+          <p>The History tab ensured nothing was lost across refreshes. The Import mode let support engineers load a customer's report and browse it exactly as the customer saw it. The Fix Table made every issue a structured work item.</p>
+          <div class="tl-delivered">
+            <div class="tl-item-row">🔍 Pinpoint tab — aggregated issues with file paths and recommendations</div>
+            <div class="tl-item-row">📋 History tab — 20 snapshots, persisted across refreshes</div>
+            <div class="tl-item-row">📥 Import mode — load customer reports without being on their machine</div>
+            <div class="tl-item-row">Fix Table export — structured JSON for engineering triage</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 3 / Round 1 -->
+      <div class="tl-item">
+        <div class="tl-left">
+          <div class="tl-dot r4">R1</div>
+          <div class="tl-round">Round 1</div>
+        </div>
+        <div class="tl-right">
+          <h3>Complete Observability — Vitals, Network, HTML Report</h3>
+          <div class="tl-meta">
+            <span class="tl-tag tag-purple">ruf-vitals</span>
+            <span class="tl-tag tag-purple">ruf-network</span>
+            <span class="tl-tag tag-purple">Health score</span>
+          </div>
+          <p>Page-level health required Core Web Vitals and network visibility. <code>ruf-vitals.js</code> wired into the PerformanceObserver API. <code>ruf-network.js</code> patched fetch and XHR globally. Together they provided the full picture: not just "which component is slow" but "what is the actual user experience".</p>
+          <p>The HTML report made the output shareable to anyone — no viewer needed, no JSON parser. A self-contained page with all 12 tool outputs, openable in any browser.</p>
+          <div class="tl-delivered">
+            <div class="tl-item-row">ruf-vitals — LCP, CLS, INP, Long Tasks with good/needs/poor classification</div>
+            <div class="tl-item-row">ruf-network — all fetch/XHR with status, duration, size, error flags</div>
+            <div class="tl-item-row">Page health score — 0–100 grade derived from all tool data</div>
+            <div class="tl-item-row">HTML export — self-contained report, no viewer required</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Round 2 -->
+      <div class="tl-item">
+        <div class="tl-left">
+          <div class="tl-dot r5">R2</div>
+          <div class="tl-round">Round 2</div>
+        </div>
+        <div class="tl-right">
+          <h3>The Causality Layer — Why, Not Just What</h3>
+          <div class="tl-meta">
+            <span class="tl-tag tag-orange">Render reasons</span>
+            <span class="tl-tag tag-orange">Thrash detection</span>
+            <span class="tl-tag tag-orange">Cycle detector</span>
+            <span class="tl-tag tag-orange">Falcor decode</span>
+          </div>
+          <p>Knowing a component re-rendered 47 times is useful. Knowing it re-rendered because a parent passed a new <code>[]</code> literal on every render cycle — while a sibling was dispatching the same ACI action 80 times per interaction — is actionable. Round 2 moved from observation to causality.</p>
+          <p>The Falcor decoder was the most technically complex piece: form-encoded POST bodies and JSON-embedded GET params, decoded in real-time, surfacing entity types and operations that were completely invisible in standard DevTools network tabs.</p>
+          <div class="tl-delivered">
+            <div class="tl-item-row">R2-A: Render reason tracker — per-property old/new value summaries in Perf tab</div>
+            <div class="tl-item-row">R2-B: Property thrash detector — flags >5 sets/sec, highlights in Pinpoint</div>
+            <div class="tl-item-row">R2-C: ACI frequency table — dispatch counts, source elements, hot-action flags</div>
+            <div class="tl-item-row">R2-D: Cycle detector — DFS on directed update graph, chain path in Pinpoint</div>
+            <div class="tl-item-row">Network: Falcor POST decoder — domain, operation, entity types, pagination, filters</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Round 3 -->
+      <div class="tl-item">
+        <div class="tl-left">
+          <div class="tl-dot r6">R3</div>
+          <div class="tl-round">Round 3</div>
+        </div>
+        <div class="tl-right">
+          <h3>DOM Health, Auto-POST Crashes & History Diff</h3>
+          <div class="tl-meta">
+            <span class="tl-tag tag-red">DOM stats</span>
+            <span class="tl-tag tag-red">Auto-POST</span>
+            <span class="tl-tag tag-red">History diff</span>
+            <span class="tl-tag tag-red">Falcor GET</span>
+          </div>
+          <p>DOM bloat is one of the most common performance issues in Polymer-heavy SPAs — thousands of custom element instances living in the DOM simultaneously. R3 added snapshot-time DOM counting, letting the panel surface "you have 4,200 DOM nodes, 840 of which are <code>pebble-grid-cell</code>".</p>
+          <p>The history diff answered the hardest support question: "it worked on Monday." Select two snapshots, hit Compare. The diff view shows exactly which metrics degraded, which issues appeared, and which components are new.</p>
+          <div class="tl-delivered">
+            <div class="tl-item-row">DOM stats — node count + custom element breakdown at snapshot time</div>
+            <div class="tl-item-row">Auto-POST crash — report POSTed to configurable endpoint before customer calls support</div>
+            <div class="tl-item-row">History diff — select two snapshots, compare metrics, issues, and component sets</div>
+            <div class="tl-item-row">Falcor GET decoder — embedded JSON-string params from <code>/data/*.json?paths=</code> URLs</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Round 4 -->
+      <div class="tl-item">
+        <div class="tl-left">
+          <div class="tl-dot r7">R4</div>
+          <div class="tl-round">Round 4</div>
+        </div>
+        <div class="tl-right">
+          <h3>The Claude Pipeline — Closing the Loop</h3>
+          <div class="tl-meta">
+            <span class="tl-tag tag-green">claudePrompt</span>
+            <span class="tl-tag tag-green">lineNumber</span>
+            <span class="tl-tag tag-green">readHint</span>
+            <span class="tl-tag tag-green">relatedComponents</span>
+          </div>
+          <p>The Fix Table export has always been a JSON. Round 4 made it a direct AI input. Each issue now includes the exact line number from its call stack, a <code>readHint</code> instruction telling Claude which file and line range to read, a list of ACI-related components that share the same action names, and a ready-to-paste <code>claudePrompt</code>.</p>
+          <p>The loop is now: customer encounters issue → report downloaded → Fix Table uploaded to Claude → Claude reads file at line → Claude applies fix → PR created. No exploration, no clarifying questions, no back-and-forth. One structured input, one targeted change.</p>
+          <div class="tl-delivered">
+            <div class="tl-item-row">lineNumber — parsed from filtered call stack's first app-source frame</div>
+            <div class="tl-item-row">readHint — "Read src/elements/tag/tag.js lines N-10 to N+10"</div>
+            <div class="tl-item-row">relatedComponents — components sharing ACI actions with the affected component</div>
+            <div class="tl-item-row">claudePrompt — severity + issueType + file:line + recommendation in one sentence</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── WHAT EACH ROUND PROVED ── -->
+  <section>
+    <div class="section-label">The Pattern</div>
+    <h2>Each round followed the same logic</h2>
+    <p class="lead">The suite grew by answering the question that the previous answer made it possible to ask. This isn't accidental — it's the natural shape of observability work. Each layer of insight exposes the next unknown.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;margin-top:32px;">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;">
+        <div style="font-size:0.72rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--green);margin-bottom:8px;">Inspector →</div>
+        <p style="font-size:0.85rem;color:var(--muted);">Seeing live properties raised the question: which properties are causing performance problems?</p>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;">
+        <div style="font-size:0.72rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--cyan);margin-bottom:8px;">Perf →</div>
+        <p style="font-size:0.85rem;color:var(--muted);">Seeing slow components raised the question: why are they re-rendering so often?</p>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;">
+        <div style="font-size:0.72rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--amber);margin-bottom:8px;">Causality →</div>
+        <p style="font-size:0.85rem;color:var(--muted);">Seeing render reasons raised the question: are the API calls also the problem?</p>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;">
+        <div style="font-size:0.72rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--purple);margin-bottom:8px;">Network →</div>
+        <p style="font-size:0.85rem;color:var(--muted);">Seeing decoded Falcor calls raised the question: who reads these reports and acts on them?</p>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;">
+        <div style="font-size:0.72rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--orange);margin-bottom:8px;">Fix Table →</div>
+        <p style="font-size:0.85rem;color:var(--muted);">Seeing structured issues raised the question: can AI apply the fix directly?</p>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;">
+        <div style="font-size:0.72rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Claude pipeline →</div>
+        <p style="font-size:0.85rem;color:var(--muted);">Having a working loop raises the question: can this work for any framework?</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── ROADMAP ── -->
+  <section>
+    <div class="section-label">What's Next</div>
+    <h2>The roadmap follows the same pattern</h2>
+    <p class="lead">Each phase generalizes what the previous phase proved — from Syndigo-specific to framework-specific to universal. The end state is a developer tool available to every frontend team, from the same place a developer already works.</p>
+
+    <div class="roadmap-phases">
+
+      <div class="phase-block pb-green">
+        <div class="phase-header">
+          <div class="phase-num" style="color:var(--green)">R5</div>
+          <h3>Round 5 — Accessibility & Duplicate Detection</h3>
+          <span class="phase-status status-next">Next</span>
+        </div>
+        <div class="phase-body">
+          <p>The last uncharted observability dimension: accessibility and load efficiency. Two tools, both low complexity, high value for the same support workflow.</p>
+          <div class="phase-items">
+            <div class="phase-item">
+              <span>♿</span>
+              <div><span class="pi-title">A11y checker</span> — <span class="pi-desc">axe-core on-demand scan via dynamic import. Results surface in Pinpoint with WCAG criterion, element selector, and fix recommendation.</span></div>
+            </div>
+            <div class="phase-item">
+              <span>🔁</span>
+              <div><span class="pi-title">Duplicate import detector</span> — <span class="pi-desc">Scans performance.getEntriesByType('script') for the same module loaded from both src/ and lib/. Flags the version mismatch that causes silent class identity failures.</span></div>
+            </div>
+            <div class="phase-item">
+              <span>🎬</span>
+              <div><span class="pi-title">Session replay sketch</span> — <span class="pi-desc">Reconstruct the user's session narrative from ACI timeline + mount sequence. No screen recording. Just the story of what the app did.</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="phase-block pb-cyan">
+        <div class="phase-header">
+          <div class="phase-num" style="color:var(--cyan)">G1</div>
+          <h3>Generic Lit — lit-debug-suite package</h3>
+          <span class="phase-status status-future">Near-term</span>
+        </div>
+        <div class="phase-body">
+          <p>Extract everything that is framework-specific (LitElement lifecycle hooks, <code>requestUpdate</code>, <code>performUpdate</code>) from everything that is architecture-specific (master gate, structured globals, panel). Publish as a standalone npm package.</p>
+          <div class="phase-items">
+            <div class="phase-item">
+              <span>📦</span>
+              <div><span class="pi-title">lit-debug-suite</span> — <span class="pi-desc">Drop-in mixin for any LitElement base class. Same activation model, same report format, same panel. Zero RUF-specific code.</span></div>
+            </div>
+            <div class="phase-item">
+              <span>🔌</span>
+              <div><span class="pi-title">Adapter interface</span> — <span class="pi-desc">A thin <code>FrameworkAdapter</code> interface — <code>onMount</code>, <code>onRender</code>, <code>onPropChange</code> — that each framework implementation satisfies. The tools consume the adapter, not the framework directly.</span></div>
+            </div>
+            <div class="phase-item">
+              <span>📄</span>
+              <div><span class="pi-title">Shared report schema</span> — <span class="pi-desc">Versioned JSON schema for the report format. Tools from different frameworks produce reports that the same panel can read.</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="phase-block pb-amber">
+        <div class="phase-header">
+          <div class="phase-num" style="color:var(--amber)">G2</div>
+          <h3>React Adapter — react-debug-suite</h3>
+          <span class="phase-status status-future">Medium-term</span>
+        </div>
+        <div class="phase-body">
+          <p>Implement the FrameworkAdapter for React. The React Profiler API, DevTools hooks, and custom hook wrappers give direct access to the same lifecycle signals. The output format is identical.</p>
+          <div class="phase-items">
+            <div class="phase-item">
+              <span>⚛️</span>
+              <div><span class="pi-title">useRufDebug provider</span> — <span class="pi-desc">A React Context provider wrapping the app root. Instruments render cycles via React Profiler. No per-component code needed.</span></div>
+            </div>
+            <div class="phase-item">
+              <span>🔗</span>
+              <div><span class="pi-title">Fiber adapter</span> — <span class="pi-desc">Maps React fiber update causes (state, props, context, hooks) to the same property-change events the panel understands.</span></div>
+            </div>
+            <div class="phase-item">
+              <span>📊</span>
+              <div><span class="pi-title">Same panel, same report</span> — <span class="pi-desc">The ruf-debug-panel ships as a standalone web component (not a React component). It reads <code>window.__RUF_*</code> globals regardless of how they were populated.</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="phase-block pb-purple">
+        <div class="phase-header">
+          <div class="phase-num" style="color:var(--purple)">IDE</div>
+          <h3>VSCode Extension — Debug reports in the editor</h3>
+          <span class="phase-status status-future">Medium-term</span>
+        </div>
+        <div class="phase-body">
+          <p>The fix table already knows the file and the line. A VSCode extension closes the gap between reading a report and opening the code — the extension does both, in the editor.</p>
+          <div class="phase-items">
+            <div class="phase-item">
+              <span>📂</span>
+              <div><span class="pi-title">Report watcher</span> — <span class="pi-desc">Extension watches a configured path for new <code>ruf-fix-table-*.json</code> files. When one appears, a notification surfaces in VSCode.</span></div>
+            </div>
+            <div class="phase-item">
+              <span>🎯</span>
+              <div><span class="pi-title">Jump-to-issue</span> — <span class="pi-desc">Clicking any Pinpoint issue in the extension panel opens the file at the exact line, with the issue and recommendation shown in a hover or Problems panel entry.</span></div>
+            </div>
+            <div class="phase-item">
+              <span>🤖</span>
+              <div><span class="pi-title">Claude Code integration</span> — <span class="pi-desc">One-click "Fix with Claude" — the extension opens a Claude Code session with the <code>claudePrompt</code> pre-filled and the file already open. The developer reviews and approves the PR.</span></div>
+            </div>
+            <div class="phase-item">
+              <span>📈</span>
+              <div><span class="pi-title">Cross-session trends</span> — <span class="pi-desc">The extension indexes all imported reports, surfacing recurring issues across sessions and customers — a signal that a component needs systematic attention, not a one-off fix.</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="phase-block pb-sky">
+        <div class="phase-header">
+          <div class="phase-num" style="color:#38bdf8">∞</div>
+          <h3>Universal Deployment — Any framework, any team</h3>
+          <span class="phase-status status-vision">Vision</span>
+        </div>
+        <div class="phase-body">
+          <p>At full scale, the debug suite is not a product — it's a pattern that any frontend team can adopt. The activation model, the structured globals, the Pinpoint classification, and the AI pipeline are composable primitives.</p>
+          <div class="phase-items">
+            <div class="phase-item">
+              <span>🌐</span>
+              <div><span class="pi-title">Vue / Svelte / Angular adapters</span> — <span class="pi-desc">Each framework has its own component lifecycle API. The FrameworkAdapter interface maps each to the same tool layer. One panel, many frameworks.</span></div>
+            </div>
+            <div class="phase-item">
+              <span>☁️</span>
+              <div><span class="pi-title">Cloud report ingestion</span> — <span class="pi-desc">Auto-POST on crash sends to a SaaS endpoint. Teams get a dashboard of production sessions, searchable by customer, by issue type, by component.</span></div>
+            </div>
+            <div class="phase-item">
+              <span>🔄</span>
+              <div><span class="pi-title">CI regression gate</span> — <span class="pi-desc">Run the debug suite in CI against a Playwright session. If the health score drops, the build fails. Performance and correctness become the same check.</span></div>
+            </div>
+            <div class="phase-item">
+              <span>🤝</span>
+              <div><span class="pi-title">Shared issue registry</span> — <span class="pi-desc">Issues from multiple teams' reports are classified against a shared taxonomy. A fix discovered by one team becomes a recommendation for another.</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── FUTURISTIC IDEAS ── -->
+  <section>
+    <div class="section-label">Futuristic Ideas</div>
+    <h2>What becomes possible when the pattern matures</h2>
+    <p class="lead">These aren't roadmap items — they're the shape of what the pattern enables once the tooling layer is stable. Each one follows from a question the existing suite makes it possible to ask.</p>
+    <div class="vision-grid">
+      <div class="vision-card">
+        <div class="vc-tag" style="color:var(--accent)">AI → Runtime loop</div>
+        <h3>Live AI diagnosis</h3>
+        <p>RUF captures a session snapshot every 30 seconds. A background agent queries Claude with the delta: "performance dropped from A to C in the last snapshot — here's what changed." Claude responds with a hypothesis. No human in the loop until a fix is needed.</p>
+      </div>
+      <div class="vision-card">
+        <div class="vc-tag" style="color:var(--purple)">Predictive</div>
+        <h3>Pre-crash prediction</h3>
+        <p>Thrash + cycle + memory storm patterns precede crashes. An ML model trained on historical report data predicts crashes before they happen — surfacing "this session is 80% likely to crash if the user opens the attribute panel."</p>
+      </div>
+      <div class="vision-card">
+        <div class="vc-tag" style="color:var(--green)">Structural</div>
+        <h3>Architecture advisor</h3>
+        <p>The ACI frequency table + cycle detector + component relationship data forms a dependency graph. An AI layer reads the graph and identifies structural anti-patterns: god components, bidirectional data flows, shared mutable state.</p>
+      </div>
+      <div class="vision-card">
+        <div class="vc-tag" style="color:var(--amber)">Onboarding</div>
+        <h3>New-developer guidance</h3>
+        <p>The inspector + prop audit + Pinpoint tab together provide a real-time guided tour of any running component. A new engineer enables the suite, mouses over any component, and gets an explanation of what it is, what it's doing, and why it's doing it.</p>
+      </div>
+      <div class="vision-card">
+        <div class="vc-tag" style="color:var(--cyan)">Testing</div>
+        <h3>Assertion from real sessions</h3>
+        <p>Record a healthy session as a "golden state." Future test runs compare the live report against the golden state. Performance regressions, new cycles, and component changes become automatic test failures.</p>
+      </div>
+      <div class="vision-card">
+        <div class="vc-tag" style="color:var(--orange)">Scale</div>
+        <h3>Cross-customer aggregate</h3>
+        <p>Auto-POST sends anonymized reports to a central service. Teams see which issues are universal across customers (systemic, fix immediately) vs. isolated (customer-specific configuration). Priority becomes data-driven.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── NORTH STAR ── -->
+  <div class="northstar">
+    <h2>The north star: a developer never guesses</h2>
+    <p>From the moment a customer reports an issue to the moment a PR is merged, every step should be data-driven. RUF is the layer that captures the data. AI is the layer that acts on it. VSCode is the place it surfaces. The developer approves. That's the whole flow — and it started with a small question about seeing live properties.</p>
+  </div>
+
+  <footer>
+    <strong>RUF Debug Suite — Origin & Roadmap</strong><br>
+    <span style="margin-top:6px;display:block;">tier-1 branch · ui-platform-elements · Amol Naval · Syndigo · September 2026</span>
+  </footer>
+</div>

@@ -1,0 +1,35 @@
+{
+  "name": "lit-debug-suite",
+  "version": "1.0.0",
+  "description": "Zero-overhead debug suite for LitElement apps. Drop-in mixin, floating panel, Chrome extension.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": {
+      "import": "./src/index.js"
+    },
+    "./panel": {
+      "import": "./src/panel/LdsDebugPanel.js"
+    },
+    "./custom/ui-platform": {
+      "import": "./custom/ui-platform/index.js"
+    }
+  },
+  "scripts": {
+    "build:extension": "rollup -c rollup.extension.config.js",
+    "build:extension:prod": "NODE_ENV=production rollup -c rollup.extension.config.js",
+    "build:lib": "rollup -c rollup.lib.config.js",
+    "build": "npm run build:lib && npm run build:extension:prod",
+    "serve": "npx serve . -p 8080"
+  },
+  "keywords": ["lit", "debug", "performance", "web-components", "devtools"],
+  "license": "MIT",
+  "peerDependencies": {
+    "lit": ">=3.0.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-terser": "^0.4.0",
+    "rollup": "^4.0.0"
+  }
+}
