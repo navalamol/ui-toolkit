@@ -843,10 +843,13 @@ class LdsDebugPanel extends LitElement {
         this._expandedNetIdx  = null;
         this._diffSelected    = new Set();
         this._diffView        = null;
-        this._baseline        = null;   // { capturedAt, components: { tag: { active, mounted, avgMs, maxMs, errorCount } } }
-        this._replayState     = null;   // { issueId, component, status: 'waiting'|'done', endSnap, comparison } | null
-        this._verifiedIssues  = {};     // { issueId: { comparison, verifiedAt } }
+        this._baseline          = null;   // { capturedAt, components: { tag: { active, mounted, avgMs, maxMs, errorCount } } }
+        this._replayState       = null;   // { issueId, component, status: 'waiting'|'done', endSnap, comparison } | null
+        this._verifiedIssues    = {};     // { issueId: { comparison, verifiedAt } }
+        this._workflowBaseline  = null;   // { url, capturedAt, renders, mounts, networkCount, networkFailures }
+        this._baselineOpen      = true;   // collapsible state for Workflow Baseline section
         this._loadBaseline();
+        this._loadWorkflowBaseline();
     }
 
     _getActiveReport() { return this._activeReport ?? this._report; }
@@ -916,6 +919,148 @@ class LdsDebugPanel extends LitElement {
             const raw = localStorage.getItem('__lds_baseline');
             if (raw) this._baseline = JSON.parse(raw);
         } catch (_) {}
+    }
+
+    // ── Phase 10: Workflow baseline ────────────────────────────────────────
+    _workflowBaselineKey() {
+        try { return `__lds_workflow_baseline_${encodeURIComponent(location.pathname)}`; } catch (_) { return null; }
+    }
+
+    _loadWorkflowBaseline() {
+        try {
+            const key = this._workflowBaselineKey();
+            if (!key) return;
+            const raw = localStorage.getItem(key);
+            if (raw) this._workflowBaseline = JSON.parse(raw);
+        } catch (_) {}
+    }
+
+    _captureWorkflowBaseline() {
+        try {
+            const perf    = window.__LDS_PERF__ || {};
+            const rawMem  = window.__LDS_MEMORY__;
+            const network = window.__LDS_NETWORK_LOG__ || [];
+
+            const renders = {};
+            for (const [tag, d] of Object.entries(perf)) renders[tag] = d.count || 0;
+
+            const mounts = {};
+            if (rawMem instanceof Map) {
+                for (const [tag, d] of rawMem) mounts[tag] = d.mounted || 0;
+            } else if (rawMem && typeof rawMem === 'object') {
+                for (const [tag, d] of Object.entries(rawMem)) mounts[tag] = d.mounted || 0;
+            }
+
+            const baseline = {
+                url:              location.href,
+                capturedAt:       new Date().toISOString(),
+                renders,
+                mounts,
+                networkCount:     network.length,
+                networkFailures:  network.filter(n => n.isError).length,
+            };
+
+            const key = this._workflowBaselineKey();
+            if (key) localStorage.setItem(key, JSON.stringify(baseline));
+            this._workflowBaseline = baseline;
+        } catch (_) {}
+        this.requestUpdate();
+    }
+
+    _clearWorkflowBaseline() {
+        try {
+            const key = this._workflowBaselineKey();
+            if (key) localStorage.removeItem(key);
+        } catch (_) {}
+        this._workflowBaseline = null;
+        this.requestUpdate();
+    }
+
+    _buildWorkflowDivergences(baseline, report) {
+        const divergences = [];
+        const currentRenders  = {};
+        for (const [tag, d] of Object.entries(report.perf || {})) currentRenders[tag] = d.count || 0;
+
+        const currentMounts = {};
+        const rawMem = report.memory || {};
+        for (const [tag, d] of Object.entries(rawMem)) currentMounts[tag] = d.mounted || 0;
+
+        const allTags = new Set([...Object.keys(baseline.renders || {}), ...Object.keys(currentRenders)]);
+        for (const tag of allTags) {
+            const base = baseline.renders?.[tag] ?? 0;
+            const curr = currentRenders[tag] ?? 0;
+            if (base < 5 && curr < 5) continue; // noise filter
+            if (base === 0) continue;
+            const pct = Math.round(((curr - base) / base) * 100);
+            if (pct >= 200) {
+                divergences.push({ tag, type: 'renders', base, curr, pct, level: 'alert' });
+            } else if (pct >= 50) {
+                divergences.push({ tag, type: 'renders', base, curr, pct, level: 'warn' });
+            } else {
+                divergences.push({ tag, type: 'renders', base, curr, pct, level: 'ok' });
+            }
+        }
+
+        const mountTags = new Set([...Object.keys(baseline.mounts || {}), ...Object.keys(currentMounts)]);
+        for (const tag of mountTags) {
+            const base = baseline.mounts?.[tag] ?? 0;
+            const curr = currentMounts[tag] ?? 0;
+            if (base === 0) continue;
+            const pct = Math.round(((curr - base) / base) * 100);
+            if (pct >= 100) {
+                divergences.push({ tag, type: 'mounts', base, curr, pct, level: 'warn' });
+            }
+        }
+
+        const currNetFails = (report.network || []).filter(n => n.isError).length;
+        if (currNetFails > (baseline.networkFailures || 0)) {
+            divergences.push({ tag: 'network', type: 'failures', base: baseline.networkFailures, curr: currNetFails, pct: null, level: 'warn' });
+        }
+
+        return divergences;
+    }
+
+    _renderWorkflowBaseline(report) {
+        const bl = this._workflowBaseline;
+        const open = this._baselineOpen;
+
+        const capturedLabel = bl
+            ? new Date(bl.capturedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+            : null;
+
+        const divergences = bl ? this._buildWorkflowDivergences(bl, report) : [];
+        const alerts = divergences.filter(d => d.level === 'alert');
+        const warns  = divergences.filter(d => d.level === 'warn');
+
+        return html`
+            <div class="section-title" style="cursor:pointer;user-select:none" @click=${() => { this._baselineOpen = !this._baselineOpen; this.requestUpdate(); }}>
+                ${open ? '▼' : '▶'} Workflow Baseline
+                ${alerts.length ? html`<span style="color:#f38ba8;margin-left:8px">⚠ ${alerts.length} alert${alerts.length > 1 ? 's' : ''}</span>` : ''}
+                ${!alerts.length && warns.length ? html`<span style="color:#f9e2af;margin-left:8px">⚠ ${warns.length} warn${warns.length > 1 ? 's' : ''}</span>` : ''}
+            </div>
+            ${open ? html`
+                <div style="padding:8px 0 12px;border-bottom:1px solid #313244">
+                    ${!bl ? html`
+                        <div style="color:#6c7086;font-size:12px;margin-bottom:8px">No baseline stored for this page.</div>
+                        <button class="header-btn" @click=${this._captureWorkflowBaseline}>📏 Set as baseline</button>
+                    ` : html`
+                        <div style="font-size:11px;color:#6c7086;margin-bottom:6px">Baseline captured: ${capturedLabel}</div>
+                        ${divergences.map(d => {
+                            if (d.type === 'failures') {
+                                return html`<div style="font-size:12px;color:#f9e2af;margin:2px 0">⚠ network failures: ${d.curr} (baseline: ${d.base}, +${d.curr - d.base})</div>`;
+                            }
+                            const icon  = d.level === 'alert' ? '⚠' : d.level === 'warn' ? '⚠' : '✓';
+                            const color = d.level === 'alert' ? '#f38ba8' : d.level === 'warn' ? '#f9e2af' : '#a6e3a1';
+                            const note  = d.level === 'ok' ? ' — OK' : `, +${d.pct}%`;
+                            return html`<div style="font-size:12px;color:${color};margin:2px 0">${icon} ${d.tag} ${d.type}: ${d.curr} (baseline: ${d.base}${note})</div>`;
+                        })}
+                        ${!divergences.length ? html`<div style="font-size:12px;color:#a6e3a1;margin:2px 0">✓ All metrics within baseline thresholds.</div>` : ''}
+                        <button class="header-btn" style="margin-top:8px" @click=${this._clearWorkflowBaseline}>Clear baseline</button>
+                        <button class="header-btn" style="margin-left:6px" @click=${this._captureWorkflowBaseline}>Update baseline</button>
+                    `}
+                </div>
+            ` : ''}
+        `;
     }
 
     _captureBaseline() {
@@ -1246,6 +1391,8 @@ class LdsDebugPanel extends LitElement {
                 ${this._kvRow('CPU cores', String(env.hardware?.cpuCores || '?'))}
                 ${env.heap ? this._kvRow('JS Heap', `${env.heap.usedMB}MB used / ${env.heap.limitMB}MB limit`) : ''}
                 ${env.pageLoad ? this._kvRow('Page load', `${env.pageLoad.loadMs}ms (TTFB ${env.pageLoad.ttfbMs}ms)`) : ''}` : ''}
+
+            ${this._renderWorkflowBaseline(r)}
         `;
     }
 
