@@ -1,0 +1,1488 @@
+<title>Performance Monitor</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* ── Design tokens ─── dark-first; amber accent for performance/speed ─── */
+:root {
+  --bg:         #0D1117;
+  --bg-raised:  #161B22;
+  --bg-code:    #090C12;
+  --surface:    #1C2128;
+  --surface-2:  #21262D;
+  --border:     #30363D;
+  --border-sub: #21262D;
+  --fg:         #E6EDF3;
+  --fg-muted:   #8B949E;
+  --fg-sub:     #6E7681;
+  --accent:     #F0A020;
+  --accent-bg:  rgba(240,160,32,.12);
+  --blue:       #58A6FF;
+  --blue-bg:    rgba(88,166,255,.10);
+  --green:      #3FB950;
+  --green-bg:   rgba(63,185,80,.10);
+  --red:        #F85149;
+  --red-bg:     rgba(248,81,73,.10);
+  --yellow:     #D29922;
+  --yellow-bg:  rgba(210,153,34,.10);
+  --purple:     #BC8CFF;
+  --sidebar-w:  248px;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg:         #FFFFFF;
+    --bg-raised:  #F6F8FA;
+    --bg-code:    #EEF0F3;
+    --surface:    #F6F8FA;
+    --surface-2:  #EAECEF;
+    --border:     #D0D7DE;
+    --border-sub: #EAECEF;
+    --fg:         #1F2328;
+    --fg-muted:   #59636E;
+    --fg-sub:     #8C959F;
+    --accent:     #B36B00;
+    --accent-bg:  rgba(179,107,0,.10);
+    --blue:       #0969DA;
+    --blue-bg:    rgba(9,105,218,.09);
+    --green:      #116329;
+    --green-bg:   rgba(17,99,41,.09);
+    --red:        #A40E26;
+    --red-bg:     rgba(164,14,38,.09);
+    --yellow:     #7D4E00;
+    --yellow-bg:  rgba(125,78,0,.09);
+    --purple:     #622FC9;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg:         #FFFFFF;
+  --bg-raised:  #F6F8FA;
+  --bg-code:    #EEF0F3;
+  --surface:    #F6F8FA;
+  --surface-2:  #EAECEF;
+  --border:     #D0D7DE;
+  --border-sub: #EAECEF;
+  --fg:         #1F2328;
+  --fg-muted:   #59636E;
+  --fg-sub:     #8C959F;
+  --accent:     #B36B00;
+  --accent-bg:  rgba(179,107,0,.10);
+  --blue:       #0969DA;
+  --blue-bg:    rgba(9,105,218,.09);
+  --green:      #116329;
+  --green-bg:   rgba(17,99,41,.09);
+  --red:        #A40E26;
+  --red-bg:     rgba(164,14,38,.09);
+  --yellow:     #7D4E00;
+  --yellow-bg:  rgba(125,78,0,.09);
+  --purple:     #622FC9;
+  color-scheme: light;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+}
+img { max-width: 100% }
+
+/* ── Layout ─────────────────────────────────────────────────── */
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  grid-template-rows: auto 1fr;
+  min-height: 100dvh;
+}
+.topbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 20;
+}
+.topbar-pkg  { font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--accent); font-weight:500 }
+.topbar-sep  { color:var(--fg-sub) }
+.topbar-title { font-size:13px; color:var(--fg-muted) }
+.topbar-badge {
+  margin-left:auto;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:11px;
+  padding:2px 8px;
+  border-radius:999px;
+  background:var(--accent-bg);
+  color:var(--accent);
+  border:1px solid rgba(240,160,32,.25);
+}
+.sidebar {
+  position: sticky;
+  top: calc(env(safe-area-inset-top, 0px) + 49px);
+  height: calc(100dvh - 49px);
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  padding: 20px 0;
+  background: var(--bg-raised);
+}
+.nav-group { margin-bottom: 20px }
+.nav-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--fg-sub);
+  padding: 0 16px 6px;
+}
+.nav-link {
+  display: block;
+  padding: 5px 16px;
+  font-size: 13px;
+  color: var(--fg-muted);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.nav-link:hover { color: var(--fg); background: var(--surface) }
+.nav-link.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-bg) }
+.nav-sub { padding-left: 28px; font-size: 12px }
+.main {
+  min-width: 0;
+  padding: 40px 48px 80px;
+  max-width: 860px;
+}
+
+/* ── Headings ─────────────────────────────────────────────── */
+h1 {
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-wrap: balance;
+  margin-bottom: 10px;
+  color: var(--fg);
+}
+h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-top: 52px;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg);
+  scroll-margin-top: 70px;
+}
+h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-top: 28px;
+  margin-bottom: 10px;
+  color: var(--fg);
+  scroll-margin-top: 70px;
+}
+h4 {
+  font-size: .875rem;
+  font-weight: 600;
+  margin-top: 20px;
+  margin-bottom: 6px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+p { margin-bottom: 14px }
+p:last-child { margin-bottom: 0 }
+a { color: var(--blue); text-decoration: none }
+a:hover { text-decoration: underline }
+
+/* ── Code ─────────────────────────────────────────────────── */
+code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .82em;
+  background: var(--surface);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--accent);
+}
+pre {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .82rem;
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 20px;
+  overflow-x: auto;
+  line-height: 1.55;
+  margin: 16px 0;
+  tab-size: 2;
+  color: var(--fg);
+}
+pre .k  { color: var(--purple) }    /* keyword */
+pre .s  { color: var(--green) }     /* string */
+pre .c  { color: var(--fg-sub); font-style:italic } /* comment */
+pre .n  { color: var(--blue) }      /* number */
+pre .f  { color: var(--accent) }    /* function */
+pre .p  { color: var(--red) }       /* property/key */
+pre .t  { color: var(--fg-muted) }  /* type */
+pre .ok { color: var(--green) }
+pre .warn { color: var(--yellow) }
+pre .bad  { color: var(--red) }
+
+/* ── Callouts ─────────────────────────────────────────────── */
+.callout {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  border-left: 3px solid;
+  margin: 18px 0;
+  font-size: .9rem;
+}
+.callout-icon { flex-shrink:0; font-size:1rem; margin-top:1px }
+.callout-body p { margin-bottom: 8px }
+.callout-body p:last-child { margin-bottom: 0 }
+.callout.info    { background:var(--blue-bg);   border-color:var(--blue)   }
+.callout.warn    { background:var(--yellow-bg); border-color:var(--yellow) }
+.callout.tip     { background:var(--green-bg);  border-color:var(--green)  }
+.callout.caution { background:var(--red-bg);    border-color:var(--red)    }
+
+/* ── Tables ───────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; margin: 16px 0 }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .875rem;
+  min-width: 480px;
+}
+th {
+  text-align: left;
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: .75rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--fg-sub);
+  border-bottom: 1px solid var(--border);
+}
+td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border-sub);
+  vertical-align: top;
+}
+tr:last-child td { border-bottom: none }
+td code { font-size: .8em }
+
+/* ── Diagrams ─────────────────────────────────────────────── */
+.diagram {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  margin: 18px 0;
+  overflow-x: auto;
+}
+.diagram-label {
+  font-size: .75rem;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--fg-sub);
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+svg text { font-family: 'IBM Plex Mono', monospace }
+
+/* ── Stat chips ───────────────────────────────────────────── */
+.stat-row { display:flex; gap:12px; flex-wrap:wrap; margin:16px 0 }
+.stat-chip {
+  flex:1; min-width:120px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:14px 16px;
+}
+.stat-chip .num {
+  font-family:'IBM Plex Mono',monospace;
+  font-size:1.6rem;
+  font-weight:500;
+  line-height:1;
+  margin-bottom:4px;
+}
+.stat-chip .lbl { font-size:.75rem; color:var(--fg-muted); text-transform:uppercase; letter-spacing:.05em }
+.num.good   { color: var(--green) }
+.num.warn   { color: var(--yellow) }
+.num.bad    { color: var(--red) }
+.num.accent { color: var(--accent) }
+
+/* ── Steps ────────────────────────────────────────────────── */
+.steps { counter-reset: step; padding: 0; list-style: none; margin: 16px 0 }
+.steps li {
+  counter-increment: step;
+  position: relative;
+  padding: 0 0 20px 40px;
+  border-left: 2px solid var(--border);
+  margin-left: 11px;
+}
+.steps li:last-child { border-left-color: transparent; padding-bottom: 0 }
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: -13px;
+  top: 1px;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  color: var(--fg-muted);
+  font-size: .75rem;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+  display: flex; align-items: center; justify-content: center;
+}
+.steps li > strong:first-child { display:block; margin-bottom:4px; color:var(--fg) }
+
+/* ── Hero ─────────────────────────────────────────────────── */
+.hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.hero-flag {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: .75rem;
+  padding: 3px 10px;
+  border-radius: 4px;
+  background: var(--accent-bg);
+  border: 1px solid rgba(240,160,32,.3);
+  color: var(--accent);
+}
+.hero-tag {
+  font-size: .75rem;
+  padding: 3px 10px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+}
+.lead {
+  font-size: 1.05rem;
+  color: var(--fg-muted);
+  margin-bottom: 28px;
+  max-width: 640px;
+  line-height: 1.7;
+}
+.divider { border:none; border-top:1px solid var(--border); margin:36px 0 }
+.section { scroll-margin-top: 70px }
+
+/* ── Feature summary bar ──────────────────────────────────── */
+.feature-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 24px 0;
+}
+.feature-bar-item {
+  background: var(--bg-raised);
+  padding: 14px 16px;
+}
+.feature-bar-item .k { font-size:.75rem; color:var(--fg-sub); text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px }
+.feature-bar-item .v { font-size:.9rem; color:var(--fg); font-weight:500 }
+
+/* ── Timeline diagram ─────────────────────────────────────── */
+.timeline-svg { width:100%; max-width:700px; display:block; overflow:visible }
+
+/* ── Render zones bar ─────────────────────────────────────── */
+.zone-bar { display:flex; height:28px; border-radius:6px; overflow:hidden; margin:10px 0; font-family:'IBM Plex Mono',monospace; font-size:11px }
+.zone { display:flex; align-items:center; justify-content:center; color:#fff; font-weight:600 }
+
+/* ── Panel mock ───────────────────────────────────────────── */
+.panel-mock {
+  background: #0A0D14;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 18px 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+}
+.panel-mock-tabs {
+  display: flex;
+  background: #111520;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  gap: 0;
+}
+.panel-mock-tab {
+  padding: 8px 14px;
+  color: #6E7681;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.panel-mock-tab.on { color: #F0A020; border-bottom-color: #F0A020 }
+.panel-mock-body { padding: 16px }
+.panel-mock-row { display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #21262D }
+.panel-mock-row:last-child { border-bottom:none }
+.panel-mock-tag { color:#58A6FF }
+.panel-mock-ok  { color:#3FB950; font-variant-numeric: tabular-nums }
+.panel-mock-warn{ color:#D29922; font-variant-numeric: tabular-nums }
+.panel-mock-bad { color:#F85149; font-variant-numeric: tabular-nums }
+.panel-mock-muted { color:#6E7681; font-variant-numeric: tabular-nums }
+
+/* ── Before/after ─────────────────────────────────────────── */
+.compare { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:16px 0 }
+.compare .side {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius:8px;
+  padding:14px;
+  font-size:.82rem;
+}
+.compare .side-label {
+  font-size:.7rem;
+  font-weight:600;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  margin-bottom:10px;
+  font-family:'IBM Plex Mono',monospace;
+}
+.side-label.before { color:var(--red) }
+.side-label.after  { color:var(--green) }
+
+/* ── Responsive ───────────────────────────────────────────── */
+@media (max-width: 820px) {
+  .shell { grid-template-columns: 1fr }
+  .sidebar { display:none }
+  .main { padding: 24px 20px 60px }
+}
+@media (max-width: 600px) {
+  h1 { font-size:1.5rem }
+  .compare { grid-template-columns:1fr }
+}
+</style>
+
+<div class="shell">
+  <!-- ── Top bar ───────────────────────────────────────────── -->
+  <header class="topbar">
+    <span class="topbar-pkg">lit-debug-suite</span>
+    <span class="topbar-sep">›</span>
+    <span class="topbar-title">Feature Guide</span>
+    <span class="topbar-badge">__LDS_PERF_ENABLED__</span>
+  </header>
+
+  <!-- ── Sidebar nav ──────────────────────────────────────── -->
+  <nav class="sidebar" aria-label="Page sections">
+    <div class="nav-group">
+      <div class="nav-label">Overview</div>
+      <a href="#overview"    class="nav-link active">What is it?</a>
+      <a href="#problem"     class="nav-link">The problem</a>
+      <a href="#quickstart"  class="nav-link">Quick start</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">How it works</div>
+      <a href="#tti"        class="nav-link">TTI measurement</a>
+      <a href="#slowrender" class="nav-link">Slow render detection</a>
+      <a href="#data"       class="nav-link">The data shape</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Using it</div>
+      <a href="#panel"      class="nav-link">Reading the Perf tab</a>
+      <a href="#console"    class="nav-link">Console commands</a>
+      <a href="#integration" class="nav-link">Pinpoint integration</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Assessment</div>
+      <a href="#design"    class="nav-link">Design internals</a>
+      <a href="#reliability" class="nav-link">Reliability</a>
+      <a href="#limits"    class="nav-link">Limitations</a>
+      <a href="#improve"   class="nav-link">What can improve</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Reference</div>
+      <a href="#example"   class="nav-link">Full example</a>
+      <a href="#globals"   class="nav-link">Globals reference</a>
+    </div>
+  </nav>
+
+  <!-- ── Main content ─────────────────────────────────────── -->
+  <main class="main">
+
+    <!-- ── Hero ─────────────────────────────────────────────── -->
+    <section id="overview" class="section">
+      <div class="hero">
+        <span class="hero-flag">__LDS_PERF_ENABLED__</span>
+        <span class="hero-tag">src/core/perf.js</span>
+        <span class="hero-tag">Panel: Perf tab</span>
+      </div>
+      <h1>Performance Monitor</h1>
+      <p class="lead">
+        Measures how long each of your LitElement components actually takes to render —
+        from the moment it connects to the DOM until its first committed update is complete.
+        No build step, no instrumentation, no changes to your components.
+      </p>
+
+      <div class="feature-bar">
+        <div class="feature-bar-item">
+          <div class="k">What it tracks</div>
+          <div class="v">TTI per component</div>
+        </div>
+        <div class="feature-bar-item">
+          <div class="k">When to use it</div>
+          <div class="v">Any time render feels slow</div>
+        </div>
+        <div class="feature-bar-item">
+          <div class="k">Overhead when off</div>
+          <div class="v">Zero</div>
+        </div>
+        <div class="feature-bar-item">
+          <div class="k">Overhead when on</div>
+          <div class="v">One Promise.then per mount</div>
+        </div>
+        <div class="feature-bar-item">
+          <div class="k">Data persists</div>
+          <div class="v">Session only (memory)</div>
+        </div>
+        <div class="feature-bar-item">
+          <div class="k">Works without Lit</div>
+          <div class="v">Yes (fallback mode)</div>
+        </div>
+      </div>
+
+      <div class="callout info">
+        <span class="callout-icon">ℹ</span>
+        <div class="callout-body">
+          <p><strong>New here?</strong> lit-debug-suite is a floating debug panel you drop into any LitElement app. It has 12 diagnostic tools that activate at runtime with no code changes to your components. The Performance Monitor is one of those tools.</p>
+          <p>To open the panel: set <code>window.__LDS_DEBUG__ = true</code> in the DevTools console, then click the <strong>🐞</strong> badge that appears in the bottom-right corner.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Problem ───────────────────────────────────────────── -->
+    <section id="problem" class="section">
+      <h2>The problem it solves</h2>
+      <p>
+        Your page feels sluggish. You open Chrome DevTools. You see a 700ms scripting
+        block in the flame graph. Which component caused it? You can't tell without
+        drilling through dozens of nested anonymous function calls.
+      </p>
+      <p>
+        You add a <code>console.time()</code>, rebuild, reload, reproduce the issue. You get one number
+        for one component. Repeat for every suspect. This is a ten-minute loop for a
+        one-sentence answer.
+      </p>
+      <p>
+        The Performance Monitor answers the question <em>automatically</em>: for every custom element
+        on the page, every time it mounts, for your entire session, without a build step.
+      </p>
+
+      <div class="compare">
+        <div class="side">
+          <div class="side-label before">▸ Before</div>
+          <p style="color:#8B949E;font-size:.85rem;line-height:1.6">
+            Open DevTools → Performance → Record → Navigate → Stop<br><br>
+            Scan flame graph for long tasks<br><br>
+            Correlate stacks to source files<br><br>
+            Add console.time()<br><br>
+            Rebuild → reload → reproduce<br><br>
+            <span style="color:#F85149">≈ 10 minutes per suspect</span>
+          </p>
+        </div>
+        <div class="side">
+          <div class="side-label after">▸ After</div>
+          <p style="color:#8B949E;font-size:.85rem;line-height:1.6">
+            Open DevTools console:<br><br>
+            <span style="color:#F0A020;font-family:'IBM Plex Mono',monospace">window.__LDS_PERF_ENABLED__ = true</span><br><br>
+            Reload the page<br><br>
+            Click 🐞 → Perf tab<br><br>
+            Sorted table: slowest component first<br><br>
+            <span style="color:#3FB950">≈ 30 seconds</span>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Quick start ─────────────────────────────────────── -->
+    <section id="quickstart" class="section">
+      <h2>Quick start</h2>
+      <p>You do not need to install anything extra. If <code>lit-debug-suite</code> is already wired into your app
+      (or you're using the Chrome extension), this is all it takes:</p>
+
+      <ol class="steps">
+        <li>
+          <strong>Enable in the DevTools console</strong>
+          <pre><span class="c">// Paste this before the page loads (or after — data from new mounts is collected)</span>
+<span class="k">window</span>.__LDS_PERF_ENABLED__ = <span class="k">true</span>;</pre>
+          <p style="font-size:.875rem;color:var(--fg-muted);margin-top:6px">Or enable all tools at once: <code>window.__LDS_DEBUG__ = true</code></p>
+        </li>
+        <li>
+          <strong>Reload the page</strong>
+          <p style="font-size:.875rem;color:var(--fg-muted)">The flag must be set before elements mount. After reload, every component connection is timed.</p>
+        </li>
+        <li>
+          <strong>Use your app normally</strong>
+          <p style="font-size:.875rem;color:var(--fg-muted)">Navigate, click, open modals, load routes. Each component mount is recorded automatically.</p>
+        </li>
+        <li>
+          <strong>Click the 🐞 badge → Perf tab</strong>
+          <p style="font-size:.875rem;color:var(--fg-muted)">Or print a sorted report directly in the console:</p>
+          <pre><span class="f">window.__LDS_PERF_REPORT__</span>();</pre>
+        </li>
+      </ol>
+
+      <div class="callout tip">
+        <span class="callout-icon">✓</span>
+        <div class="callout-body">
+          <p><strong>Setting the flag after the page loads works too.</strong> Components that mount after you set the flag are measured. Components that already mounted are not. If you need to measure a component that's already on screen, you need to reload after setting the flag.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── TTI measurement ─────────────────────────────────── -->
+    <section id="tti" class="section">
+      <h2>How TTI is measured</h2>
+      <p>
+        <strong>TTI (time to interactive)</strong> is the gap between the moment a component connects
+        to the DOM and the moment its first render has fully committed — meaning the DOM
+        has been updated and is ready for user interaction.
+      </p>
+      <p>
+        For LitElement components, this is measured using <code>el.updateComplete</code>: a Promise
+        that Lit resolves after the first committed DOM update, including any microtask
+        batching that coalesced property changes before the first render.
+      </p>
+
+      <!-- SVG Timeline diagram -->
+      <div class="diagram">
+        <div class="diagram-label">Fig 1 — TTI measurement timeline (Lit path)</div>
+        <svg class="timeline-svg" viewBox="0 0 680 180" height="180">
+          <!-- timeline base line -->
+          <line x1="40" y1="100" x2="620" y2="100" stroke="#30363D" stroke-width="1.5"/>
+          <!-- arrow head -->
+          <polygon points="620,95 632,100 620,105" fill="#30363D"/>
+
+          <!-- t0 marker -->
+          <line x1="80" y1="84" x2="80" y2="116" stroke="#58A6FF" stroke-width="1.5"/>
+          <circle cx="80" cy="100" r="5" fill="#58A6FF"/>
+          <text x="80" y="72" text-anchor="middle" fill="#58A6FF" font-size="11">connectedCallback()</text>
+          <text x="80" y="132" text-anchor="middle" fill="#6E7681" font-size="10">t₀ = performance.now()</text>
+
+          <!-- t1 marker -->
+          <line x1="480" y1="84" x2="480" y2="116" stroke="#F0A020" stroke-width="1.5"/>
+          <circle cx="480" cy="100" r="5" fill="#F0A020"/>
+          <text x="480" y="72" text-anchor="middle" fill="#F0A020" font-size="11">updateComplete resolves</text>
+          <text x="480" y="132" text-anchor="middle" fill="#6E7681" font-size="10">t₁ = performance.now()</text>
+
+          <!-- measured span -->
+          <line x1="80" y1="100" x2="480" y2="100" stroke="#F0A020" stroke-width="2.5" stroke-dasharray="none"/>
+          <!-- span bracket -->
+          <rect x="82" y="93" width="396" height="14" rx="7" fill="rgba(240,160,32,.18)"/>
+
+          <!-- TTI label above span -->
+          <text x="281" y="88" text-anchor="middle" fill="#F0A020" font-size="12" font-weight="600">TTI = t₁ − t₀</text>
+
+          <!-- phase labels below -->
+          <text x="160" y="155" text-anchor="middle" fill="#8B949E" font-size="10">properties set</text>
+          <text x="280" y="155" text-anchor="middle" fill="#8B949E" font-size="10">render() runs</text>
+          <text x="400" y="155" text-anchor="middle" fill="#8B949E" font-size="10">DOM committed</text>
+
+          <!-- dotted lines to phase labels -->
+          <line x1="160" y1="148" x2="160" y2="113" stroke="#30363D" stroke-width="1" stroke-dasharray="3,3"/>
+          <line x1="280" y1="148" x2="280" y2="113" stroke="#30363D" stroke-width="1" stroke-dasharray="3,3"/>
+          <line x1="400" y1="148" x2="400" y2="113" stroke="#30363D" stroke-width="1" stroke-dasharray="3,3"/>
+
+          <!-- "what happens inside" annotation -->
+          <text x="640" y="104" text-anchor="start" fill="#6E7681" font-size="10">time →</text>
+        </svg>
+      </div>
+
+      <h3>Why <code>updateComplete</code> — not <code>updated()</code>?</h3>
+      <p>
+        <code>updated()</code> fires after Lit patches the DOM, but it runs synchronously inside the
+        update cycle. Data fetches, child component renders, and side effects triggered
+        from <code>updated()</code> are <em>not yet reflected</em> in what the user sees. <code>updateComplete</code>
+        resolves as a microtask after the full synchronous update cycle completes, making
+        it the earliest moment the rendered output is stable for the user.
+      </p>
+
+      <div class="diagram">
+        <div class="diagram-label">Fig 2 — Lit update cycle vs measurement window</div>
+        <pre style="background:transparent;border:none;padding:0;margin:0;font-size:.78rem">
+  connectedCallback()
+  │
+  ├─ super.connectedCallback()      ← Lit queues the first update
+  │
+  ├─ [your init code runs]
+  │
+  └─┐   Lit microtask scheduler
+    │
+    ├── performUpdate()
+    │   ├─ willUpdate(changedProps)
+    │   ├─ <span class="k">render()</span>                   ← template function runs
+    │   ├─ DOM patching
+    │   └─ updated(changedProps)    ← fires synchronously
+    │
+    └── <span class="ok">updateComplete resolves</span>        ← ← ← this is t₁
+        │
+        └── perf.js records: t₁ - t₀ = <span class="ok">TTI</span></pre>
+      </div>
+
+      <h3>Fallback mode (non-Lit elements)</h3>
+      <p>
+        For elements that don't have <code>updateComplete</code> (plain custom elements,
+        non-Lit frameworks), the fallback measures the synchronous duration of
+        <code>connectedCallback</code> itself. This is less accurate — it does not capture async
+        rendering — but is still useful for detecting elements that do heavy synchronous
+        work in their connection phase.
+      </p>
+      <pre><span class="c">// perf.js — simplified</span>
+<span class="k">function</span> <span class="f">attach</span>(el) {
+  <span class="k">if</span> (!window.__LDS_PERF_ENABLED__) <span class="k">return</span>;
+  <span class="k">const</span> tag = el.tagName.toLowerCase();
+  <span class="k">const</span> t0  = performance.now();
+
+  <span class="k">if</span> (el.updateComplete?.<span class="k">then</span>) {
+    <span class="c">// Lit path: measure to first committed render</span>
+    el.updateComplete.<span class="k">then</span>(() =&gt; <span class="f">_record</span>(tag, performance.now() - t0));
+    <span class="k">return</span>;
+  }
+
+  <span class="c">// Fallback: measure synchronous connectedCallback duration</span>
+  <span class="f">_record</span>(tag, performance.now() - t0);
+}</pre>
+
+      <div class="callout info">
+        <span class="callout-icon">ℹ</span>
+        <div class="callout-body">
+          <p><strong><code>attach(el)</code> is called from <code>LitDebugMixin.connectedCallback</code></strong>, which means elements that don't use the mixin are not measured. If you see a component missing from the Perf tab, check that it extends a class that includes <code>LitDebugMixin</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Slow render detection ──────────────────────────── -->
+    <section id="slowrender" class="section">
+      <h2>Slow render detection</h2>
+      <p>
+        Every measurement is also checked against a threshold. Renders over 500ms generate
+        a console warning and are added to a separate slow-render log.
+      </p>
+
+      <!-- Render zones bar -->
+      <div style="margin:20px 0">
+        <div class="zone-bar">
+          <div class="zone" style="width:29%;background:#1A7F37">Good (&lt; 100ms)</div>
+          <div class="zone" style="width:25%;background:#7D4E00">Acceptable (100–300ms)</div>
+          <div class="zone" style="width:19%;background:#CF222E">Slow (300–500ms)</div>
+          <div class="zone" style="width:27%;background:#8B0000;font-size:10px">Very slow (&gt; 500ms — warned)</div>
+        </div>
+        <p style="font-size:.75rem;color:var(--fg-sub);margin-top:6px;font-family:'IBM Plex Mono',monospace">
+          Only the &gt;500ms zone triggers a console warning. All zones are recorded in window.__LDS_PERF__.
+        </p>
+      </div>
+
+      <h3>What a slow render console warning looks like</h3>
+      <pre style="background:#1A0A00;border-color:#7D4E00">
+<span class="warn">⚠ [LdsPerfMonitor] &lt;rock-grid&gt; slow render: 823ms</span></pre>
+
+      <p>
+        The threshold is hard-coded at <strong>500ms</strong>. This is a deliberate choice — 500ms is
+        the boundary at which a render is definitely user-perceptible as a freeze, not
+        just a brief jank. The slow render log (<code>window.__LDS_SLOW_RENDERS__</code>) captures
+        up to the last 100 slow events across all components, each with a stack trace.
+      </p>
+
+      <div class="callout warn">
+        <span class="callout-icon">⚠</span>
+        <div class="callout-body">
+          <p><strong>The threshold is not configurable today.</strong> Components that render in 200–400ms — perceptible but below 500ms — do not trigger a warning. You can spot them in the Perf tab where they appear with an orange average render time. See <a href="#improve">What can improve</a> for the design rationale.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Data shape ─────────────────────────────────────── -->
+    <section id="data" class="section">
+      <h2>The data it collects</h2>
+      <p>
+        All measurements are stored live in <code>window.__LDS_PERF__</code>. The object is a plain
+        dictionary keyed by lowercase tag name. Each entry is updated in place every time
+        that component mounts.
+      </p>
+
+      <pre><span class="c">// window.__LDS_PERF__</span>
+{
+  <span class="p">"rock-grid"</span>: {
+    <span class="p">count</span>:    <span class="n">47</span>,        <span class="c">// total number of times this element mounted</span>
+    <span class="p">totalMs</span>:  <span class="n">18682</span>,     <span class="c">// sum of all TTI measurements</span>
+    <span class="p">avgMs</span>:    <span class="n">397</span>,       <span class="c">// derived: totalMs / count</span>
+    <span class="p">maxMs</span>:    <span class="n">1243</span>,      <span class="c">// worst single render</span>
+    <span class="p">minMs</span>:    <span class="n">82</span>,        <span class="c">// best single render</span>
+    <span class="p">samples</span>:  <span class="n">[212, 345, 823, 91, ...]</span> <span class="c">// last 20 measurements (ring buffer)</span>
+  },
+  <span class="p">"product-tile"</span>: {
+    <span class="p">count</span>:    <span class="n">192</span>,
+    <span class="p">totalMs</span>:  <span class="n">8064</span>,
+    <span class="p">maxMs</span>:    <span class="n">184</span>,
+    <span class="p">minMs</span>:    <span class="n">28</span>,
+    <span class="p">samples</span>:  <span class="n">[41, 38, 55, 44, ...]</span>
+  }
+}</pre>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Type</th>
+              <th>What it means</th>
+              <th>When it's interesting</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>count</code></td>
+              <td>number</td>
+              <td>How many times this element mounted during the session</td>
+              <td>High count on a leaf component may indicate redundant re-mounting</td>
+            </tr>
+            <tr>
+              <td><code>avgMs</code></td>
+              <td>derived</td>
+              <td><code>totalMs / count</code> — mean TTI across all mounts</td>
+              <td>This is the headline number. &gt;100ms warrants investigation</td>
+            </tr>
+            <tr>
+              <td><code>maxMs</code></td>
+              <td>number</td>
+              <td>Worst-case single render</td>
+              <td>Large max with low avg = occasional spike (data-dependent render)</td>
+            </tr>
+            <tr>
+              <td><code>minMs</code></td>
+              <td>number</td>
+              <td>Best-case render (often the warm-cache case)</td>
+              <td>Very low min with high avg = cold-start penalty or race</td>
+            </tr>
+            <tr>
+              <td><code>samples</code></td>
+              <td>number[]</td>
+              <td>Last 20 individual measurements (ring buffer, newest last)</td>
+              <td>Use to spot trends: is it getting worse over time?</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout tip">
+        <span class="callout-icon">✓</span>
+        <div class="callout-body">
+          <p><strong>The <code>count</code> field is the render count, not just the slow-render count.</strong> Every mount is recorded, regardless of how fast it was. This makes it double-duty: it tells you both render speed and mount frequency. A component with <code>count: 200</code> and <code>avgMs: 25</code> is fast individually but may be unnecessarily mounting 200 times — that's a different kind of problem.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Panel ──────────────────────────────────────────── -->
+    <section id="panel" class="section">
+      <h2>Reading the Perf tab</h2>
+      <p>
+        The Perf tab in the <strong>🐞</strong> panel shows a sorted table of all measured components.
+        Slowest average TTI appears first.
+      </p>
+
+      <div class="panel-mock">
+        <div class="panel-mock-tabs">
+          <div class="panel-mock-tab">Summary</div>
+          <div class="panel-mock-tab">Pinpoint</div>
+          <div class="panel-mock-tab">Vitals</div>
+          <div class="panel-mock-tab">Network</div>
+          <div class="panel-mock-tab on">Perf ⚡</div>
+          <div class="panel-mock-tab">Errors</div>
+          <div class="panel-mock-tab">Console</div>
+          <div class="panel-mock-tab">Events</div>
+          <div class="panel-mock-tab">Memory</div>
+        </div>
+        <div class="panel-mock-body">
+          <div class="panel-mock-row" style="color:#6E7681;font-size:10px;padding-bottom:10px">
+            <span>COMPONENT</span>
+            <span style="display:flex;gap:32px">
+              <span>RENDERS</span>
+              <span>AVG ms</span>
+              <span>MAX ms</span>
+              <span>MIN ms</span>
+            </span>
+          </div>
+          <div class="panel-mock-row">
+            <span class="panel-mock-tag">▶ &lt;rock-grid&gt;</span>
+            <span style="display:flex;gap:32px">
+              <span class="panel-mock-warn">47</span>
+              <span class="panel-mock-bad" style="font-weight:600">397ms ⚠</span>
+              <span class="panel-mock-bad">1243ms</span>
+              <span class="panel-mock-ok">82ms</span>
+            </span>
+          </div>
+          <div class="panel-mock-row">
+            <span class="panel-mock-tag">▶ &lt;product-filter&gt;</span>
+            <span style="display:flex;gap:32px">
+              <span class="panel-mock-muted">12</span>
+              <span class="panel-mock-warn">143ms</span>
+              <span class="panel-mock-warn">310ms</span>
+              <span class="panel-mock-ok">88ms</span>
+            </span>
+          </div>
+          <div class="panel-mock-row">
+            <span class="panel-mock-tag">▶ &lt;product-tile&gt;</span>
+            <span style="display:flex;gap:32px">
+              <span class="panel-mock-muted">192</span>
+              <span class="panel-mock-ok">42ms</span>
+              <span class="panel-mock-ok">184ms</span>
+              <span class="panel-mock-ok">28ms</span>
+            </span>
+          </div>
+          <div class="panel-mock-row">
+            <span class="panel-mock-tag">▶ &lt;nav-header&gt;</span>
+            <span style="display:flex;gap:32px">
+              <span class="panel-mock-muted">1</span>
+              <span class="panel-mock-ok">18ms</span>
+              <span class="panel-mock-ok">18ms</span>
+              <span class="panel-mock-ok">18ms</span>
+            </span>
+          </div>
+          <div style="margin-top:12px;color:#6E7681;font-size:10px">▶ Click any row to expand last 20 sample measurements</div>
+        </div>
+      </div>
+
+      <h3>What the colors mean</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Color</th><th>Threshold</th><th>Interpretation</th></tr></thead>
+          <tbody>
+            <tr><td style="color:var(--green)">■ Green</td><td>&lt; 100ms avg</td><td>Fast. No action needed.</td></tr>
+            <tr><td style="color:var(--yellow)">■ Amber</td><td>100–300ms avg</td><td>Noticeable. Worth profiling during next sprint.</td></tr>
+            <tr><td style="color:var(--red)">■ Red</td><td>&gt; 300ms avg</td><td>User-perceptible freeze. Investigate now.</td></tr>
+            <tr><td style="color:var(--red)">⚠ Red + warning</td><td>&gt; 500ms any render</td><td>Console warning also emitted. Check slow renders log.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Expanding a row</h3>
+      <p>
+        Click any component row to see its last 20 individual render times displayed as
+        a mini-sparkline. This helps you distinguish:
+      </p>
+      <ul style="padding-left:20px;margin:10px 0">
+        <li style="margin-bottom:6px"><strong>Consistent slowness</strong> — all 20 samples are high. The component always renders slowly regardless of state.</li>
+        <li style="margin-bottom:6px"><strong>First-mount spike</strong> — first sample is high, remainder are low. Cold start or lazy data fetch on first connection.</li>
+        <li><strong>Degrading trend</strong> — samples increasing over time. State growing in a way that makes re-rendering more expensive with each mount.</li>
+      </ul>
+    </section>
+
+    <!-- ── Console commands ──────────────────────────────── -->
+    <section id="console" class="section">
+      <h2>Console commands</h2>
+      <p>All data is also accessible from the DevTools console, without opening the panel.</p>
+
+      <h3><code>window.__LDS_PERF_REPORT__()</code></h3>
+      <p>Prints a <code>console.table()</code> sorted by average render time, slowest first. Returns the same data as an array (useful for scripting).</p>
+      <pre><span class="k">window</span>.__LDS_PERF_REPORT__()
+
+<span class="c">// Output in console.table:</span>
+<span class="t">┌──────────────────┬─────────┬────────┬────────┬────────┬──────────────────────┐
+│ tag              │ renders │ avg ms │ max ms │ min ms │ last 5 ms            │
+├──────────────────┼─────────┼────────┼────────┼────────┼──────────────────────┤
+│ rock-grid        │ 47      │ 397    │ 1243   │ 82     │ 212, 345, 823, 91,…  │
+│ product-filter   │ 12      │ 143    │ 310    │ 88     │ 99, 155, 143, 188,…  │
+│ product-tile     │ 192     │ 42     │ 184    │ 28     │ 38, 44, 51, 36, 41   │
+└──────────────────┴─────────┴────────┴────────┴────────┴──────────────────────┘</span></pre>
+
+      <h3><code>window.__LDS_PERF__</code></h3>
+      <p>The raw live object. Query it directly for scripting or automation:</p>
+      <pre><span class="c">// Is rock-grid slow?</span>
+<span class="k">const</span> { totalMs, count } = <span class="k">window</span>.__LDS_PERF__[<span class="s">'rock-grid'</span>];
+console.log(`avg: ${<span class="f">Math.round</span>(totalMs / count)}ms`);</pre>
+
+      <h3><code>window.__LDS_SLOW_RENDERS__</code></h3>
+      <p>Array of the last 100 individual renders that exceeded 500ms. Each entry includes a stack trace.</p>
+      <pre><span class="k">window</span>.__LDS_SLOW_RENDERS__
+<span class="c">// → [
+//   {
+//     tag:   "rock-grid",
+//     ms:    823,
+//     ts:    "2026-10-06T10:14:32.110Z",
+//     stack: "Error\n  at LdsPerfMonitor._record...\n  at rock-grid.js:184..."
+//   },
+//   ...
+// ]</span></pre>
+
+      <h3><code>window.__LDS_PERF_RESET__()</code></h3>
+      <p>Clears all collected data. Useful after applying a fix mid-session — reset, exercise the component, then re-read to see clean post-fix numbers.</p>
+      <pre><span class="f">window.__LDS_PERF_RESET__</span>();
+<span class="c">// [LdsPerfMonitor] Reset</span>
+<span class="c">// → all counts and samples are gone; new mounts start fresh</span></pre>
+    </section>
+
+    <!-- ── Pinpoint integration ───────────────────────────── -->
+    <section id="integration" class="section">
+      <h2>Pinpoint integration</h2>
+      <p>
+        The Performance Monitor doesn't just fill the Perf tab — its data feeds into
+        the Pinpoint tab's automatic issue detection. The Pinpoint tab aggregates signals
+        from all 12 tools into a prioritised list of problems.
+      </p>
+
+      <div class="diagram">
+        <div class="diagram-label">Fig 3 — data flow from perf.js to Pinpoint</div>
+        <pre style="background:transparent;border:none;padding:0;margin:0;font-size:.78rem">
+  window.__LDS_PERF__                          window.__LDS_ERRORS__
+       │                                                │
+       │    window.__LDS_MEMORY__                       │
+       │          │                                     │
+       └──────────┴─────────────────────────────────────┘
+                                │
+                       <span class="f">_collectReport()</span>              <span class="c">← called on panel open</span>
+                                │
+                    <span class="f">_buildPinpointIssues(report)</span>
+                                │
+             ┌──────────────────┼──────────────────┐
+             │                  │                  │
+    <span class="bad">slow-render</span>          <span class="warn">render-count</span>       <span class="ok">clean (no issue)</span>
+    finding               finding
+    [HIGH]                [MEDIUM]
+    evidenceLevel:        evidenceLevel:
+    "attribution"         "correlation"
+    (stack found)         (count only)</pre>
+      </div>
+
+      <h3>What triggers a Pinpoint finding from perf data?</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Condition</th><th>Finding type</th><th>Evidence level</th><th>Severity</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>avgMs &gt; 300ms</td>
+              <td><code>slow-render</code></td>
+              <td><code>observation</code></td>
+              <td>MEDIUM</td>
+            </tr>
+            <tr>
+              <td>avgMs &gt; 300ms AND stack in slow renders log</td>
+              <td><code>slow-render</code></td>
+              <td><code>attribution</code></td>
+              <td>HIGH</td>
+            </tr>
+            <tr>
+              <td>count &gt; expected (heuristic: count &gt; 20× unique tag on page)</td>
+              <td><code>excessive-renders</code></td>
+              <td><code>correlation</code></td>
+              <td>MEDIUM</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        When a finding has <code>evidenceLevel: "attribution"</code>, the source file and line number
+        appear under the issue card — this comes from the stack trace captured in <code>__LDS_SLOW_RENDERS__</code>.
+        You can copy the finding directly to the Fix Table for Claude Code.
+      </p>
+    </section>
+
+    <!-- ── Design internals ──────────────────────────────── -->
+    <section id="design" class="section">
+      <h2>Design internals</h2>
+      <p>
+        Understanding how the tool is built helps you judge when to trust it and when
+        to be skeptical.
+      </p>
+
+      <h3>Zero-overhead when off</h3>
+      <p>
+        The first line in <code>attach(el)</code> is a guard:
+      </p>
+      <pre><span class="k">if</span> (!<span class="k">window</span>.__LDS_PERF_ENABLED__) <span class="k">return</span>;</pre>
+      <p>
+        When the flag is not set, the function returns immediately. No closures, no
+        allocations, no Promise callbacks. The call from the mixin's <code>connectedCallback</code>
+        is effectively free.
+      </p>
+
+      <h3>The ring buffer (last 20 samples)</h3>
+      <p>
+        Storing all measurements per session would use unbounded memory on long sessions
+        or components that mount hundreds of times. The <code>samples</code> field is capped at 20
+        entries, dropping the oldest when full:
+      </p>
+      <pre><span class="k">if</span> (d.samples.length > <span class="n">20</span>) d.samples.shift();</pre>
+      <p>
+        20 is enough to spot a trend or calculate a rolling average. The mean across all
+        renders is still accurate (tracked via <code>totalMs</code> and <code>count</code>); only the fine-grained
+        sample history is capped.
+      </p>
+
+      <h3>One Promise per mount — not per render</h3>
+      <p>
+        The measurement covers the <em>initial</em> mount: <code>connectedCallback</code> to <code>updateComplete</code>.
+        Subsequent property changes and re-renders are <em>not</em> measured individually by
+        this tool (that's the job of the Prop Audit tool with <code>__LDS_PROP_DEBUG__</code>).
+        This is a deliberate scope decision — initial render time is the most user-visible
+        performance metric, and measuring every re-render would add overhead on update-heavy
+        components.
+      </p>
+
+      <h3>Sharing the raw object with the panel</h3>
+      <p>
+        <code>window.__LDS_PERF__ = _data</code> is set once at module load and the panel reads it
+        directly. There is no serialization, copy, or message-passing. This means the
+        panel always shows live data without any refresh mechanism — it reads the object
+        the same way the console does.
+      </p>
+
+      <div class="stat-row">
+        <div class="stat-chip">
+          <div class="num accent">1</div>
+          <div class="lbl">Promise per mount</div>
+        </div>
+        <div class="stat-chip">
+          <div class="num good">20</div>
+          <div class="lbl">Sample ring depth</div>
+        </div>
+        <div class="stat-chip">
+          <div class="num warn">500</div>
+          <div class="lbl">Slow threshold (ms)</div>
+        </div>
+        <div class="stat-chip">
+          <div class="num good">100</div>
+          <div class="lbl">Max slow renders stored</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Reliability ───────────────────────────────────── -->
+    <section id="reliability" class="section">
+      <h2>Reliability</h2>
+      <p>
+        The Performance Monitor is one of the more reliable tools in the suite.
+        Here's an honest breakdown of what you can and can't trust.
+      </p>
+
+      <h3>What is highly reliable</h3>
+      <ul style="padding-left:20px;margin:10px 0 16px">
+        <li style="margin-bottom:8px">
+          <strong>The count.</strong> <code>count</code> is a simple integer incremented each time a component
+          mounts. It is accurate as long as <code>attach(el)</code> is called from <code>connectedCallback</code>.
+        </li>
+        <li style="margin-bottom:8px">
+          <strong>The maxMs.</strong> The worst-case measurement is real — a slow render that happened
+          in this session. It may not be reproducible on demand, but it happened.
+        </li>
+        <li style="margin-bottom:8px">
+          <strong>Relative ranking.</strong> If <code>rock-grid</code> is consistently 10× slower than
+          <code>product-tile</code> in the sorted table, that relationship is reliable even
+          if the absolute numbers have variance.
+        </li>
+      </ul>
+
+      <h3>What has meaningful variance</h3>
+      <ul style="padding-left:20px;margin:10px 0 16px">
+        <li style="margin-bottom:8px">
+          <strong>avgMs on low-count components.</strong> A component that mounted once has
+          <code>count: 1</code> and <code>avgMs: X</code> — that's a single data point. It may have been a
+          cold-start load. Don't over-index on it.
+        </li>
+        <li style="margin-bottom:8px">
+          <strong>Absolute milliseconds across machines.</strong> A 200ms TTI on a developer
+          MacBook Pro may be 1200ms on a low-end Android. The numbers reflect the
+          machine running the session, not production conditions.
+        </li>
+        <li style="margin-bottom:8px">
+          <strong>First-run vs warm measurements.</strong> Browser JIT compilation, module caching,
+          and network conditions affect the first few renders. Mount the component a
+          few times before drawing conclusions about its typical performance.
+        </li>
+      </ul>
+
+      <h3>What is not reliable</h3>
+      <ul style="padding-left:20px;margin:10px 0">
+        <li style="margin-bottom:8px">
+          <strong>Mounts that happen before the flag is set.</strong> If the page already mounted
+          before you set <code>__LDS_PERF_ENABLED__</code>, those renders are not recorded.
+          Always reload after setting the flag for a clean session.
+        </li>
+        <li>
+          <strong>Async work triggered from <code>updated()</code>.</strong> If a component fetches data
+          in <code>updated()</code>, that fetch is not included in the measured TTI — the
+          measurement completes at <code>updateComplete</code>, which resolves before the fetch
+          returns. The component appears fast in the Perf tab but may still feel slow
+          to the user because it re-renders when data arrives.
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── Limitations ───────────────────────────────────── -->
+    <section id="limits" class="section">
+      <h2>Limitations</h2>
+
+      <h3>Initial mount only</h3>
+      <p>
+        TTI is measured for the first render of each element instance. Subsequent
+        re-renders triggered by property changes are not individually timed. To measure
+        re-render performance, use <code>__LDS_PROP_DEBUG__</code> (the Prop Audit tool), which
+        tracks render reasons and thrash.
+      </p>
+
+      <h3>No per-instance tracking</h3>
+      <p>
+        Measurements are bucketed by tag name, not by instance. If you have 50 instances
+        of <code>&lt;product-tile&gt;</code>, they all contribute to the same <code>product-tile</code> entry.
+        You cannot tell which specific instance was slow. For instance-level debugging,
+        use the Inspector tool (<code>__LDS_INSPECTOR__</code>).
+      </p>
+
+      <h3>Components not using the mixin are invisible</h3>
+      <p>
+        <code>attach(el)</code> is called from <code>LitDebugMixin.connectedCallback</code>. Any custom element
+        that does not extend a class using the mixin will not appear in the Perf tab —
+        even if it's a LitElement. This includes third-party elements and elements you
+        haven't migrated to the mixin yet.
+      </p>
+
+      <h3>Does not account for async rendering patterns</h3>
+      <pre><span class="c">// This render pattern is measured short:</span>
+<span class="f">connectedCallback</span>() {
+  super.connectedCallback();
+  <span class="c">// updateComplete resolves here — TTI = fast</span>
+}
+
+<span class="f">updated</span>() {
+  <span class="k">this</span>.fetchData().<span class="k">then</span>(data =&gt; {
+    <span class="k">this</span>.data = data;  <span class="c">// triggers a SECOND render — not measured</span>
+  });
+}</pre>
+      <p>
+        The measured TTI is for the first (skeleton) render, not the data-loaded render
+        the user actually waits for. The user experience is slower than the numbers suggest.
+      </p>
+
+      <h3>DevTools throttling affects readings</h3>
+      <p>
+        If you have CPU throttling enabled in DevTools (4× or 6× slowdown), your TTI
+        numbers will be proportionally inflated. This is expected behavior — it reflects
+        performance on slower hardware — but be aware when comparing against baselines
+        taken without throttling.
+      </p>
+
+      <div class="callout caution">
+        <span class="callout-icon">!</span>
+        <div class="callout-body">
+          <p><strong>Do not use Perf tab numbers directly in performance budgets or CI gates.</strong> The measurements are relative and machine-dependent. For absolute production performance budgets, use Real User Monitoring (RUM) tools. The Perf Monitor is an investigation tool, not a reporting tool.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── What can improve ──────────────────────────────── -->
+    <section id="improve" class="section">
+      <h2>What can improve</h2>
+      <p>These are honest gaps in the current implementation. None are blocking, but each
+      represents a real use case the tool doesn't serve well today.</p>
+
+      <h3>1. Configurable slow-render threshold</h3>
+      <p>
+        The 500ms threshold is hard-coded. In a complex dashboard app, 200ms renders
+        may be the norm and worth flagging. In a simple static page, 800ms may be acceptable.
+        An improvement would be <code>window.__LDS_SLOW_RENDER_THRESHOLD_MS__ = 200</code> to
+        let teams set their own bar.
+      </p>
+
+      <h3>2. Re-render measurement</h3>
+      <p>
+        The tool measures initial mount TTI but not the time for subsequent re-renders
+        (property changes, parent rerenders). Many performance issues are in the
+        <em>ongoing render performance</em> of components that update frequently (data grids,
+        live feeds). A separate <code>__LDS_RERENDER_PERF__</code> metric that hooks into
+        <code>willUpdate</code>/<code>updated</code> would fill this gap.
+      </p>
+
+      <h3>3. Render count history over visibility cycles</h3>
+      <p>
+        The <code>count</code> field accumulates forever for a session, but there's no breakpoint
+        at page navigation or visibility change. A component that mounts 200 times
+        across 10 navigation cycles is fine (20/cycle). A component that mounts 200 times
+        in one cycle is suspicious. Pairing with the cycle tracking from
+        <code>window.__LDS_MOUNT_CYCLES__</code> would make this distinction automatic.
+      </p>
+
+      <h3>4. P95/P99 instead of max</h3>
+      <p>
+        <code>maxMs</code> is sensitive to outliers — one anomalous render during page load can
+        make a fast component look terrible. P95 and P99 latency percentiles would give
+        a more stable signal for components with high mount counts.
+      </p>
+
+      <h3>5. Async render tracking</h3>
+      <p>
+        As noted in the limitations, components that render a skeleton and then update
+        with data appear fast in the Perf tab. A <code>reportTTI()</code> manual method that
+        developers could call when their component is truly ready (after data loads)
+        would give a more accurate user-facing measurement.
+      </p>
+    </section>
+
+    <!-- ── Full example ──────────────────────────────────── -->
+    <section id="example" class="section">
+      <h2>Complete example: finding and fixing a slow render</h2>
+      <p>
+        This is a realistic workflow. The app has a <code>&lt;rock-grid&gt;</code> component that feels
+        slow when the product page loads. No one knows why.
+      </p>
+
+      <ol class="steps">
+        <li>
+          <strong>Enable the tool before the page loads</strong>
+          <pre><span class="c">// DevTools console — before navigating to the page</span>
+<span class="k">window</span>.__LDS_PERF_ENABLED__ = <span class="k">true</span>;</pre>
+        </li>
+        <li>
+          <strong>Navigate to the product page</strong>
+          <p style="font-size:.875rem;color:var(--fg-muted)">The page loads. <code>rock-grid</code> mounts and loads data. The 🐞 badge appears.</p>
+        </li>
+        <li>
+          <strong>Open the panel and go to the Perf tab</strong>
+          <pre>
+<span class="c">// Or read directly from console:</span>
+<span class="f">window.__LDS_PERF_REPORT__</span>();
+
+<span class="t">┌─────────────┬─────────┬────────┬────────┐
+│ tag         │ renders │ avg ms │ max ms │
+├─────────────┼─────────┼────────┼────────┤
+│ rock-grid   │ 1       │ 823    │ 823    │  ← 🚨
+│ price-badge │ 48      │ 12     │ 31     │
+│ nav-header  │ 1       │ 19     │ 19     │
+└─────────────┴─────────┴────────┴────────┘</span></pre>
+        </li>
+        <li>
+          <strong>Check the slow renders log for a stack trace</strong>
+          <pre><span class="k">window</span>.__LDS_SLOW_RENDERS__[<span class="n">0</span>]
+<span class="c">// → {
+//   tag: "rock-grid",
+//   ms: 823,
+//   ts: "2026-10-06T10:14:32.110Z",
+//   stack: "Error\n  at _record (perf.js:61)\n
+//           at rock-grid.connectedCallback (rock-grid.js:184)\n
+//           at ..."
+// }</span></pre>
+          <p style="font-size:.875rem;color:var(--fg-muted)">The stack points to <strong>rock-grid.js:184</strong>.</p>
+        </li>
+        <li>
+          <strong>Look at the Pinpoint tab</strong>
+          <p style="font-size:.875rem;color:var(--fg-muted)">
+            The panel already has a finding:<br>
+            <code>[HIGH] [attribution] &lt;rock-grid&gt; slow-render — src/rock-grid.js:184</code>
+          </p>
+        </li>
+        <li>
+          <strong>Export the Fix Table and send to Claude Code</strong>
+          <pre>{
+  <span class="p">"problem"</span>: <span class="s">"slow-render"</span>,
+  <span class="p">"component"</span>: <span class="s">"rock-grid"</span>,
+  <span class="p">"file"</span>: <span class="s">"src/elements/rock-grid/rock-grid.js"</span>,
+  <span class="p">"line"</span>: <span class="n">184</span>,
+  <span class="p">"evidenceLevel"</span>: <span class="s">"attribution"</span>,
+  <span class="p">"observed"</span>: { <span class="p">"avgMs"</span>: <span class="n">823</span>, <span class="p">"maxMs"</span>: <span class="n">823</span>, <span class="p">"count"</span>: <span class="n">1</span> },
+  <span class="p">"claudePrompt"</span>: <span class="s">"Fix a HIGH slow-render issue in &lt;rock-grid&gt;. File: src/elements/rock-grid/rock-grid.js:184. Avg TTI 823ms — investigate connectedCallback and initial render logic."</span>
+}</pre>
+        </li>
+        <li>
+          <strong>Apply the fix, reset, and verify</strong>
+          <pre><span class="c">// After fix is applied and page reloaded:</span>
+<span class="f">window.__LDS_PERF_RESET__</span>();  <span class="c">// clear old data</span>
+<span class="c">// navigate to the product page again...</span>
+<span class="f">window.__LDS_PERF_REPORT__</span>();
+
+<span class="t">┌─────────────┬─────────┬────────┬────────┐
+│ tag         │ renders │ avg ms │ max ms │</span>
+<span class="ok">│ rock-grid   │ 1       │ 68     │ 68     │  ← ✓ fixed</span>
+<span class="t">│ price-badge │ 48      │ 11     │ 29     │
+└─────────────┴─────────┴────────┴────────┘</span></pre>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ── Globals reference ─────────────────────────────── -->
+    <section id="globals" class="section">
+      <h2>Globals reference</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Global</th><th>Type</th><th>Direction</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>__LDS_PERF_ENABLED__</code></td>
+              <td>boolean</td>
+              <td>Set by you</td>
+              <td>Turns on measurement. Must be set before elements mount.</td>
+            </tr>
+            <tr>
+              <td><code>__LDS_PERF__</code></td>
+              <td>Object</td>
+              <td>Read-only</td>
+              <td>Live dictionary of all measurements, keyed by tag name.</td>
+            </tr>
+            <tr>
+              <td><code>__LDS_PERF_REPORT__()</code></td>
+              <td>Function</td>
+              <td>Call anytime</td>
+              <td>Prints sorted <code>console.table</code>; returns data as array.</td>
+            </tr>
+            <tr>
+              <td><code>__LDS_PERF_RESET__()</code></td>
+              <td>Function</td>
+              <td>Call anytime</td>
+              <td>Clears all measurements. Next mounts start a clean accumulation.</td>
+            </tr>
+            <tr>
+              <td><code>__LDS_SLOW_RENDERS__</code></td>
+              <td>Array</td>
+              <td>Read-only</td>
+              <td>Last 100 renders that exceeded 500ms. Each entry has tag, ms, ts, stack.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <hr class="divider">
+      <p style="font-size:.8rem;color:var(--fg-sub);text-align:center">
+        lit-debug-suite — Performance Monitor feature guide &nbsp;·&nbsp; Part 1 of 12
+        <br>Next: <strong>Prop Audit (<code>__LDS_PROP_DEBUG__</code>)</strong>
+      </p>
+    </section>
+
+  </main>
+</div>
+
+<script>
+// ── Sidebar active state on scroll ───────────────────────────
+(function () {
+  const links = document.querySelectorAll('.nav-link[href^="#"]');
+  const sections = Array.from(links).map(l => document.querySelector(l.getAttribute('href'))).filter(Boolean);
+
+  function onScroll() {
+    let current = sections[0];
+    const scrollY = window.scrollY + 90;
+    for (const s of sections) {
+      if (s.offsetTop <= scrollY) current = s;
+    }
+    links.forEach(l => {
+      l.classList.toggle('active', l.getAttribute('href') === '#' + current.id);
+    });
+  }
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+})();
+</script>
