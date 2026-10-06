@@ -717,6 +717,24 @@ class LdsDebugPanel extends LitElement {
             .evl-attribution { background:#1a2b1a; color:#a6e3a1; }
             .evl-lifetime-violation { background:#2d1a1a; color:#f38ba8; }
             .evl-causality-confirmed { background:#1a2b20; color:#94e2d5; }
+            .fix-verified-badge { background:#a6e3a1; color:#1e1e2e; border-radius:3px; padding:2px 6px; font-size:9px; font-weight:bold; flex-shrink:0; margin-top:1px; }
+            .baseline-badge { font-size:10px; color:#89b4fa; background:#1a1a2e; border-radius:4px; padding:3px 8px; display:inline-flex; align-items:center; gap:4px; }
+            .baseline-clear { background:none; border:none; color:#6c7086; cursor:pointer; font-size:11px; padding:0 2px; line-height:1; }
+            .baseline-clear:hover { color:#f38ba8; }
+            .replay-banner { background:#1a2b1a; border:1px solid #a6e3a1; border-radius:6px; padding:9px 14px; margin-bottom:10px; font-size:11px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; color:#cdd6f4; }
+            .replay-banner.replay-done { background:#1e2030; border-color:#89b4fa; }
+            .verification-block { margin-top:10px; padding:8px 12px; border-radius:5px; border:1px solid #313244; }
+            .verification-block.verified { border-color:#a6e3a1; background:#0d1a0d; }
+            .verification-block.not-verified { border-color:#fab387; background:#1f150d; }
+            .verify-title { font-size:11px; font-weight:bold; margin-bottom:5px; }
+            .verify-row { display:flex; align-items:center; gap:6px; font-size:11px; margin:3px 0; }
+            .verify-label { color:#6c7086; min-width:130px; }
+            .verify-before { color:#f38ba8; text-decoration:line-through; }
+            .verify-after { color:#a6e3a1; font-weight:bold; }
+            .verify-after.verify-worse { color:#f38ba8; }
+            .verify-good { color:#a6e3a1; font-weight:bold; font-size:10px; }
+            .verify-partial { color:#f9e2af; font-size:10px; }
+            .verify-bad { color:#f38ba8; font-size:10px; }
             .issue-info { flex:1; min-width:0; }
             .issue-component { color:#89b4fa; font-weight:bold; }
             .issue-type { color:#6c7086; font-size:10px; margin-left:6px; }
@@ -798,6 +816,10 @@ class LdsDebugPanel extends LitElement {
         this._expandedNetIdx  = null;
         this._diffSelected    = new Set();
         this._diffView        = null;
+        this._baseline        = null;   // { capturedAt, components: { tag: { active, mounted, avgMs, maxMs, errorCount } } }
+        this._replayState     = null;   // { issueId, component, status: 'waiting'|'done', endSnap, comparison } | null
+        this._verifiedIssues  = {};     // { issueId: { comparison, verifiedAt } }
+        this._loadBaseline();
     }
 
     _getActiveReport() { return this._activeReport ?? this._report; }
@@ -861,6 +883,164 @@ class LdsDebugPanel extends LitElement {
     _viewHistoryItem(item) { this._activeReport = item.report; this._tab = 'summary'; }
     _clearHistory() { if (window.__LDS_HISTORY__) window.__LDS_HISTORY__.length = 0; this._activeReport = null; this.requestUpdate(); }
 
+    // ── Phase 8: Baseline + Replay ─────────────────────────────────────────
+    _loadBaseline() {
+        try {
+            const raw = localStorage.getItem('__lds_baseline');
+            if (raw) this._baseline = JSON.parse(raw);
+        } catch (_) {}
+    }
+
+    _captureBaseline() {
+        const mem = window.__LDS_MEMORY__;
+        const components = {};
+        if (mem instanceof Map) {
+            for (const [tag, d] of mem) {
+                const perf = (window.__LDS_PERF__ || {})[tag];
+                components[tag] = {
+                    active:     (d.mounted || 0) - (d.unmounted || 0),
+                    mounted:    d.mounted || 0,
+                    avgMs:      (perf && perf.count > 0) ? Math.round(perf.totalMs / perf.count) : null,
+                    maxMs:      perf ? Math.round(perf.maxMs || 0) : null,
+                    errorCount: (window.__LDS_ERRORS__ || []).filter(e => e.tag === tag).length,
+                };
+            }
+        }
+        this._baseline = { capturedAt: new Date().toISOString(), components };
+        try { localStorage.setItem('__lds_baseline', JSON.stringify(this._baseline)); } catch (_) {}
+        this.requestUpdate();
+    }
+
+    _clearBaseline() {
+        this._baseline = null;
+        try { localStorage.removeItem('__lds_baseline'); } catch (_) {}
+        this.requestUpdate();
+    }
+
+    _snapshotForTag(tag) {
+        const mem = window.__LDS_MEMORY__;
+        const d   = mem instanceof Map ? mem.get(tag) : (mem || {})[tag];
+        const pf  = (window.__LDS_PERF__ || {})[tag];
+        return {
+            active:       d ? (d.mounted || 0) - (d.unmounted || 0) : null,
+            mounted:      d ? (d.mounted || 0) : null,
+            avgMs:        (pf && pf.count > 0) ? Math.round(pf.totalMs / pf.count) : null,
+            maxMs:        pf ? Math.round(pf.maxMs || 0) : null,
+            errorCount:   (window.__LDS_ERRORS__ || []).filter(e => e.tag === tag).length,
+            thrashCount:  (window.__LDS_THRASH__ || []).filter(t => t.tag === tag).length,
+            networkFails: (window.__LDS_NETWORK_LOG__ || []).filter(n => n.isError).length,
+        };
+    }
+
+    _buildComparison(issue, endSnap) {
+        const tag      = issue.component.replace(/^<|>$/g, '');
+        const baseline = this._baseline?.components?.[tag];
+        const obs      = issue.observed || {};
+        const metrics  = [];
+
+        const _m = (label, bVal, aVal, lowerIsBetter = true) => {
+            if (bVal == null || aVal == null || bVal === 0) return;
+            const diff         = lowerIsBetter ? bVal - aVal : aVal - bVal;
+            const reductionPct = Math.round(diff / bVal * 100);
+            const verified     = reductionPct >= 70;
+            const improved     = reductionPct > 0;
+            metrics.push({ label, before: bVal, after: aVal, reductionPct, improved, verified });
+        };
+
+        switch (issue.issueType) {
+            case 'memory-leak':
+                _m('Active instances', baseline?.active ?? obs.active, endSnap.active);
+                break;
+            case 'render-storm':
+                _m('Active instances', baseline?.active ?? obs.mountCount, endSnap.active);
+                if (obs.avgTTIms) _m('Avg TTI (ms)', baseline?.avgMs ?? obs.avgTTIms, endSnap.avgMs);
+                break;
+            case 'slow-render':
+                _m('Avg TTI (ms)', baseline?.avgMs ?? obs.maxMs, endSnap.avgMs);
+                break;
+            case 'high-avg-tti':
+                _m('Avg TTI (ms)', baseline?.avgMs ?? obs.avgMs, endSnap.avgMs);
+                _m('Max TTI (ms)', baseline?.maxMs ?? obs.maxMs, endSnap.maxMs);
+                break;
+            case 'runtime-error':
+                _m('Error count', baseline?.errorCount ?? obs.errorCount, endSnap.errorCount);
+                break;
+            case 'network-error':
+                _m('Failed requests', obs.failedCount, endSnap.networkFails);
+                break;
+            case 'property-thrash':
+                _m('Thrash incidents', obs.maxSetCount, endSnap.thrashCount);
+                break;
+            default:
+                _m('Active instances', baseline?.active ?? obs.active ?? obs.mountCount, endSnap.active);
+                break;
+        }
+
+        const overallVerified = metrics.length > 0 && metrics.some(m => m.verified);
+        return { metrics, overallVerified, comparedAt: new Date().toISOString() };
+    }
+
+    _startReplay(issue) {
+        if (this._replayState?.status === 'waiting') return;
+        this._replayState = { issueId: issue.id, component: issue.component.replace(/^<|>$/g, ''), status: 'waiting' };
+        this.requestUpdate();
+    }
+
+    _completeReplay() {
+        if (!this._replayState || this._replayState.status !== 'waiting') return;
+        const tag     = this._replayState.component;
+        const endSnap = this._snapshotForTag(tag);
+        const issues  = _buildPinpointIssues(this._getActiveReport() || {});
+        const issue   = issues.find(i => i.id === this._replayState.issueId);
+        const comp    = issue ? this._buildComparison(issue, endSnap) : null;
+        this._replayState = { ...this._replayState, status: 'done', endSnap, comparison: comp };
+        if (comp) this._verifiedIssues = { ...this._verifiedIssues, [this._replayState.issueId]: { comparison: comp, verifiedAt: comp.comparedAt } };
+        this.requestUpdate();
+    }
+
+    _cancelReplay() {
+        this._replayState = null;
+        this.requestUpdate();
+    }
+
+    _renderReplayBanner() {
+        const rs = this._replayState;
+        if (!rs) return '';
+        if (rs.status === 'waiting') return html`
+            <div class="replay-banner">
+                <span>▶ Replaying <strong>&lt;${rs.component}&gt;</strong> — Interact with the component to reproduce the scenario, then click Done.</span>
+                <button class="header-btn accent" @click=${this._completeReplay}>✓ Done</button>
+                <button class="header-btn" @click=${this._cancelReplay}>✕ Cancel</button>
+            </div>`;
+        return html`
+            <div class="replay-banner replay-done">
+                ${rs.comparison?.overallVerified ? '✅ Fix Verified' : '⚠ Fix Not Confirmed'} — comparison recorded on &lt;${rs.component}&gt;.
+                <button class="header-btn" @click=${()=>{ this._replayState=null; this.requestUpdate(); }}>Dismiss</button>
+            </div>`;
+    }
+
+    _renderVerificationBlock(issue) {
+        const v = this._verifiedIssues[issue.id];
+        if (!v) return '';
+        const comp = v.comparison;
+        return html`
+            <div class="verification-block ${comp.overallVerified ? 'verified' : 'not-verified'}">
+                <div class="verify-title">${comp.overallVerified ? '✅ Fix Verified' : '⚠ Fix Not Confirmed'}</div>
+                ${comp.metrics.length === 0 ? html`<div style="font-size:10px;color:#6c7086">No measurable data recorded. Ensure the component was exercised during replay.</div>` : ''}
+                ${comp.metrics.map(m => html`
+                    <div class="verify-row">
+                        <span class="verify-label">${m.label}:</span>
+                        <span class="verify-before">${m.before}</span>
+                        <span style="color:#6c7086">→</span>
+                        <span class="verify-after ${m.improved ? '' : 'verify-worse'}">${m.after}</span>
+                        <span class="${m.verified ? 'verify-good' : m.improved ? 'verify-partial' : 'verify-bad'}">
+                            ${m.verified ? '✅' : m.improved ? '↓' : '↑'} ${Math.abs(m.reductionPct)}%
+                        </span>
+                    </div>`)}
+                <div style="color:#45475a;font-size:10px;margin-top:4px">Compared at ${new Date(comp.comparedAt).toLocaleTimeString()}</div>
+            </div>`;
+    }
+
     _exportFixTable() {
         const r = this._getActiveReport();
         if (!r) return;
@@ -884,6 +1064,7 @@ class LdsDebugPanel extends LitElement {
                 related.length ? `Related components (via events): ${related.join(', ')}.` : '',
             ].filter(Boolean).join(' ');
 
+            const vf = this._verifiedIssues[i.id];
             const evidenceCapsule = {
                 problem:        i.issueType,
                 component:      i.component,
@@ -895,6 +1076,11 @@ class LdsDebugPanel extends LitElement {
                 recommendation: i.recommendation,
                 relatedComponents: related,
                 claudePrompt:   promptText,
+                verification:   vf ? {
+                    status:     vf.comparison.overallVerified ? 'verified' : 'not-confirmed',
+                    metrics:    vf.comparison.metrics,
+                    comparedAt: vf.comparison.comparedAt,
+                } : null,
             };
 
             return {
@@ -1042,13 +1228,22 @@ class LdsDebugPanel extends LitElement {
         if (!r) return html`<p class="empty">No data</p>`;
         const issues = _buildPinpointIssues(r);
         if (!issues.length) return html`<p class="empty">✅ No pinpointable issues.<br>Ensure perf, memory, errorBoundary, network tools are enabled.</p>`;
+        const baselineLabel = this._baseline
+            ? new Date(this._baseline.capturedAt).toLocaleTimeString()
+            : null;
         return html`
-            <div class="filter-bar" style="justify-content:space-between">
+            <div class="filter-bar" style="justify-content:space-between;flex-wrap:wrap;gap:6px">
                 <button class="stack-filter-toggle" @click=${()=>{ this._stackFilterOn=!this._stackFilterOn; }}>
                     ${this._stackFilterOn ? '📦 App frames only (click for all)' : '🌐 All frames (click for app only)'}
                 </button>
-                <button class="header-btn accent" @click=${this._exportFixTable}>📋 Export Fix Table (${issues.length})</button>
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                    ${baselineLabel
+                        ? html`<span class="baseline-badge">📸 Baseline: ${baselineLabel}<button class="baseline-clear" @click=${this._clearBaseline} title="Clear baseline">✕</button></span>`
+                        : html`<button class="header-btn" @click=${this._captureBaseline} title="Snapshot current metrics as baseline for post-fix comparison">📸 Capture Baseline</button>`}
+                    <button class="header-btn accent" @click=${this._exportFixTable}>📋 Export Fix Table (${issues.length})</button>
+                </div>
             </div>
+            ${this._renderReplayBanner()}
             ${issues.map(i => this._renderIssueCard(i))}`;
     }
 
@@ -1065,6 +1260,7 @@ class LdsDebugPanel extends LitElement {
                 <div class="issue-header" @click=${()=>{ this._expandedIssue = expanded ? null : issue.id; }}>
                     <span class="issue-sev ${issue.severity}">${issue.severity.toUpperCase()}</span>
                     ${issue.evidenceLevel ? html`<span class="evidence-badge evl-${issue.evidenceLevel}" title="Evidence level: ${issue.evidenceLevel}">${issue.evidenceLevel}</span>` : ''}
+                    ${this._verifiedIssues[issue.id]?.comparison.overallVerified ? html`<span class="fix-verified-badge">✅ VERIFIED</span>` : ''}
                     <div class="issue-info">
                         <span class="issue-component">&lt;${issue.component}&gt;</span>
                         <span class="issue-type">${issue.issueType}</span>
@@ -1082,6 +1278,12 @@ class LdsDebugPanel extends LitElement {
                             <div style="margin-top:8px;font-size:10px;color:#6c7086">Event-related components:</div>
                             <div style="margin-top:2px">${related.map(t => html`<span class="tag-pill">${t}</span>`)}</div>
                         ` : ''}
+                        ${this._renderVerificationBlock(issue)}
+                        <div style="margin-top:8px">
+                            ${(this._replayState?.issueId !== issue.id || this._replayState?.status === 'done')
+                                ? html`<button class="header-btn" style="font-size:10px;padding:2px 8px" @click=${()=>this._startReplay(issue)}>▶ Replay to verify fix</button>`
+                                : html`<span style="font-size:10px;color:#a6e3a1">⏳ Replay active — click ✓ Done above when finished</span>`}
+                        </div>
                         ${issue.callStacks?.length > 0 ? html`
                             <button class="stack-toggle" @click=${()=>{ this._expandedStacks={...this._expandedStacks,[issue.id]:!stacksExp}; }}>
                                 ${stacksExp?'▲ Hide':'▼ Show'} call stack (${issue.callStacks.length})

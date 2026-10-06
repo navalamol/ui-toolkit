@@ -497,6 +497,51 @@ Run on 5 real bugs. If evidence levels don't reduce Claude's false-fix rate vs P
 
 ---
 
+## Session 2026-10-06 — Phase 8: Verification Loop
+
+### What was done
+
+**`src/panel/LdsDebugPanel.js`**
+- Added three new state fields to constructor: `_baseline`, `_replayState`, `_verifiedIssues`; calls `_loadBaseline()` on construct to restore persisted baseline from `localStorage`
+
+**Baseline capture:**
+- `_captureBaseline()` — snapshots `window.__LDS_MEMORY__` + `window.__LDS_PERF__` + error counts into `this._baseline = { capturedAt, components: { tag: { active, mounted, avgMs, maxMs, errorCount } } }`; persists to `localStorage.__lds_baseline`
+- `_clearBaseline()` — clears both in-memory and localStorage copy
+- Pinpoint tab header shows "📸 Capture Baseline" when none set; shows "📸 Baseline: HH:MM:SS ✕" chip when one is active
+
+**Replay flow:**
+- `_startReplay(issue)` — sets `_replayState = { issueId, component, status: 'waiting' }`; no-ops if replay already active
+- `_completeReplay()` — calls `_snapshotForTag(tag)` (reads live globals at that moment), calls `_buildComparison(issue, endSnap)`, stores result in `_verifiedIssues[issueId]`
+- `_cancelReplay()` — clears `_replayState`
+- `_renderReplayBanner()` — shows green "▶ Replaying <tag>" bar with "✓ Done" + "✕ Cancel" during replay; shows blue result banner after completion
+
+**Comparison logic (`_buildComparison`):**
+- "Before" values come from `this._baseline.components[tag]` if baseline exists, else from `issue.observed`
+- "After" values come from end-of-replay live snapshot
+- Per-issueType metric mapping: `memory-leak` → active instances; `high-avg-tti` → avgMs + maxMs; `runtime-error` → error count; `network-error` → failed requests; `property-thrash` → thrash count; default → active instances
+- `overallVerified = true` when any metric shows ≥70% reduction
+
+**UI additions:**
+- `_renderVerificationBlock(issue)` — inline block inside expanded issue card: before/after metric rows with ✅/↓/↑ indicators; strikethrough "before" value, green "after" value
+- `✅ VERIFIED` badge added to issue card header when `overallVerified` is true
+- "▶ Replay to verify fix" button in each expanded issue body; shows "⏳ Replay active" when that issue's replay is running
+
+**Export:**
+- `_exportFixTable()` now reads `_verifiedIssues[i.id]` and adds `evidenceCapsule.verification: { status, metrics, comparedAt }` (null when no replay run)
+
+**CSS added:** `.fix-verified-badge`, `.baseline-badge`, `.baseline-clear`, `.replay-banner`, `.replay-banner.replay-done`, `.verification-block`, `.verify-*` classes
+
+### Key design decisions
+- Baseline lives in `localStorage` so it survives panel open/close within a browser session, but is NOT synced or durable
+- `_snapshotForTag` reads live globals directly (not the last collected report) so comparison is against current app state after the engineer's fix
+- `overallVerified` requires ≥70% on ANY tracked metric for that issue type — intentionally lenient so a partial fix still shows improvement without claiming full verification
+- `_replayState` is session-only (not persisted); `_verifiedIssues` is session-only too — restores are not needed since verification only makes sense in the session where you applied the fix
+
+### Phase 8 kill test (to run)
+Does this measurably reduce "did my fix work?" manual profiler runs? If engineers still open DevTools after using Replay, the feature hasn't earned its place.
+
+---
+
 ## Source reference
 Original files read from `D:\Work\R7\generic-changes\ui-platform-elements\src\base\`:
 - `ruf-vitals.js` → `src/core/vitals.js`
