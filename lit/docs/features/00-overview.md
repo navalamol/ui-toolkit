@@ -62,7 +62,7 @@ The 🐞 badge appears in the bottom-right corner when `<lds-debug-panel>` is re
 Click it to open the slide-in panel with 12 tabs:
 
 ```
-Summary · Pinpoint · Vitals · Network · Perf · Errors · Console · Events · SlowAPI · Memory · History · Env
+Summary · Pinpoint · Vitals · Network · Falcor · Perf · Errors · Console · Events · SlowAPI · Memory · History · Env
 ```
 
 **Key panel actions:**
@@ -79,6 +79,7 @@ Summary · Pinpoint · Vitals · Network · Perf · Errors · Console · Events 
 | Pinpoint | Perf, PropAudit, CycleDetector, ResourceTracker, Memory | Aggregated findings — start here |
 | Vitals | vitals.js | LCP, CLS, INP, Long Tasks |
 | Network | network.js | fetch + XHR log |
+| Falcor | network.js + FalcorDecoder | Falcor-specific: burst groups, path anatomy, dataIndex breakdown, search sessions |
 | Perf | perf.js | TTI per component |
 | Errors | LdsErrorBoundary | Structured crash reports |
 | Console | console.js | `console.error` / `console.warn` ring buffer |

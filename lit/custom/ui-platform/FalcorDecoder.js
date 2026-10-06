@@ -12,6 +12,81 @@
  * This file must stay in custom/ui-platform/ — it has no place in the generic core.
  */
 
+// ── Extended path analysis ─────────────────────────────────────────────────
+
+function _extractDataIndex(url) {
+    if (!url) return null;
+    const m = url.match(/\/data\/([^./?#]+)\.json/);
+    return m ? m[1] : null;
+}
+
+function _analyzePathsExtended(paths) {
+    if (!Array.isArray(paths) || !paths.length) {
+        return { pathCount: 0, entityTypes: [], entityIds: [], fields: [], isSearch: false, searchRequestId: null, isBatchGet: false };
+    }
+    const pathCount    = paths.length;
+    const isBatchGet   = pathCount > 1;
+    const entityTypeSet = new Set();
+    const entityIdSet   = new Set();
+    const fieldSet      = new Set();
+    let isSearch        = false;
+    let searchRequestId = null;
+
+    for (const path of paths) {
+        if (!Array.isArray(path)) continue;
+
+        // Detect search patterns: [..., "searchResults", "create"] or [..., "searchResults", requestId, ...]
+        const srIdx = path.indexOf('searchResults');
+        if (srIdx !== -1) {
+            isSearch = true;
+            const next = path[srIdx + 1];
+            if (next && typeof next === 'string' && next !== 'create' && !/^\d+$/.test(next)) {
+                searchRequestId = next;
+            }
+        }
+
+        // Find "byIds" to split entity context from fields
+        const byIdsIdx = path.findIndex(seg => seg === 'byIds');
+        if (byIdsIdx !== -1) {
+            // Segment just before byIds is the entity type
+            const typeSeg = path[byIdsIdx - 1];
+            if (typeSeg != null) {
+                if (Array.isArray(typeSeg)) typeSeg.forEach(t => typeof t === 'string' && entityTypeSet.add(t));
+                else if (typeof typeSeg === 'string') entityTypeSet.add(typeSeg);
+            }
+            // Segment after byIds is entity IDs
+            const idSeg = path[byIdsIdx + 1];
+            if (idSeg != null) {
+                if (Array.isArray(idSeg)) idSeg.slice(0, 50).forEach(id => entityIdSet.add(String(id)));
+                else entityIdSet.add(String(idSeg));
+            }
+            // Remaining segments are fields
+            for (let i = byIdsIdx + 2; i < path.length; i++) {
+                const seg = path[i];
+                if (Array.isArray(seg)) seg.forEach(s => typeof s === 'string' && s !== '*' && fieldSet.add(s));
+                else if (typeof seg === 'string' && seg !== '*') fieldSet.add(seg);
+            }
+        } else if (srIdx === -1) {
+            // No byIds and no searchResults — collect middle-segment strings as entity types
+            for (let i = 1; i < Math.min(path.length, 4); i++) {
+                const seg = path[i];
+                if (typeof seg === 'string' && seg.length > 0) entityTypeSet.add(seg);
+                else if (Array.isArray(seg)) seg.forEach(s => typeof s === 'string' && entityTypeSet.add(s));
+            }
+        }
+    }
+
+    return {
+        pathCount,
+        isBatchGet,
+        entityTypes:     [...entityTypeSet],
+        entityIds:       [...entityIdSet].slice(0, 30),
+        fields:          [...fieldSet],
+        isSearch,
+        searchRequestId,
+    };
+}
+
 // ── POST body parsing ──────────────────────────────────────────────────────
 
 function _parseFalcorBody(body) {
@@ -36,7 +111,10 @@ function _parseFalcorBody(body) {
                 try { callPath = JSON.parse(params.callPath); } catch (_e) { callPath = params.callPath; }
                 let args;
                 try { args = params.arguments ? JSON.parse(params.arguments) : []; } catch (_e) { args = []; }
-                return { method: 'call', callPath: Array.isArray(callPath) ? callPath.join('.') : String(callPath), callPathArr: Array.isArray(callPath) ? callPath : null, args };
+                const cpStr = Array.isArray(callPath) ? callPath.join('.') : String(callPath);
+                return { method: 'call', callPath: cpStr, callPathArr: Array.isArray(callPath) ? callPath : null, args,
+                    pathCount: 0, isBatchGet: false, entityTypes: [], entityIds: [], fields: [],
+                    isSearch: cpStr.includes('searchResults'), searchRequestId: null };
             }
 
             if (method === 'get' || method === 'set') {
@@ -46,7 +124,9 @@ function _parseFalcorBody(body) {
                     const firstPath = paths[0];
                     const pathStr   = Array.isArray(firstPath) ? firstPath.join('.') : String(firstPath);
                     const types     = paths.map(p => Array.isArray(p) ? String(p[0]) : String(p));
-                    return { method, callPath: pathStr, callPathArr: Array.isArray(firstPath) ? firstPath : null, types };
+                    const ext       = _analyzePathsExtended(paths);
+                    return { method, callPath: pathStr, callPathArr: Array.isArray(firstPath) ? firstPath : null, types,
+                        paths, ...ext };
                 }
             }
 
@@ -74,7 +154,9 @@ function _parseFalcorGetUrl(url) {
             const firstPath = paths[0];
             const pathStr   = Array.isArray(firstPath) ? firstPath.join('.') : String(firstPath);
             const types     = paths.map(p => Array.isArray(p) ? String(p[0]) : String(p));
-            return { method: 'get', callPath: pathStr, callPathArr: Array.isArray(firstPath) ? firstPath : null, types };
+            const ext       = _analyzePathsExtended(paths);
+            return { method: 'get', callPath: pathStr, callPathArr: Array.isArray(firstPath) ? firstPath : null, types,
+                paths, ...ext };
         }
         return { method: 'get', callPath: pathsRaw.slice(0, 80) };
     } catch (_e) {
@@ -148,20 +230,30 @@ function decodeFalcor(rawUrl, body) {
     if (!falcorInfo && rawUrl.includes('model.json')) falcorInfo = _parseFalcorGetUrl(rawUrl);
     if (!falcorInfo) return null;
 
-    const domain    = _extractDomain(falcorInfo.callPath, falcorInfo.callPathArr);
-    const appName   = _extractAppName(rawUrl);
-    const operation = _buildOperation(falcorInfo);
+    const domain     = _extractDomain(falcorInfo.callPath, falcorInfo.callPathArr);
+    const appName    = _extractAppName(rawUrl);
+    const operation  = _buildOperation(falcorInfo);
+    const dataIndex  = _extractDataIndex(rawUrl);
 
     return {
-        protocol:    'falcor',
-        method:      falcorInfo.method,
-        callPath:    falcorInfo.callPath,
-        callPathArr: falcorInfo.callPathArr || null,
-        types:       falcorInfo.types || null,
-        args:        falcorInfo.args || null,
+        protocol:        'falcor',
+        method:          falcorInfo.method,
+        callPath:        falcorInfo.callPath,
+        callPathArr:     falcorInfo.callPathArr || null,
+        types:           falcorInfo.types || null,
+        args:            falcorInfo.args || null,
         domain,
         appName,
         operation,
+        dataIndex,
+        paths:           falcorInfo.paths           || null,
+        pathCount:       falcorInfo.pathCount        ?? 0,
+        isBatchGet:      falcorInfo.isBatchGet       ?? false,
+        entityTypes:     falcorInfo.entityTypes      || [],
+        entityIds:       falcorInfo.entityIds        || [],
+        fields:          falcorInfo.fields           || [],
+        isSearch:        falcorInfo.isSearch         ?? false,
+        searchRequestId: falcorInfo.searchRequestId  || null,
     };
 }
 

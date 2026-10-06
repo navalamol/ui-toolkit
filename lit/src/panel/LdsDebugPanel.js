@@ -648,6 +648,7 @@ const TABS = [
     { key: 'pinpoint', label: '🔍 Pinpoint' },
     { key: 'vitals',   label: 'Vitals' },
     { key: 'network',  label: 'Network' },
+    { key: 'falcor',   label: 'Falcor' },
     { key: 'perf',     label: 'Perf' },
     { key: 'errors',   label: 'Errors' },
     { key: 'console',  label: 'Console' },
@@ -848,6 +849,11 @@ class LdsDebugPanel extends LitElement {
         this._verifiedIssues    = {};     // { issueId: { comparison, verifiedAt } }
         this._workflowBaseline  = null;   // { url, capturedAt, renders, mounts, networkCount, networkFailures }
         this._baselineOpen      = true;   // collapsible state for Workflow Baseline section
+        this._falcorViewMode    = 'grouped';  // 'grouped' | 'dataindex' | 'search'
+        this._falcorDiFilter    = 'all';      // dataIndex filter
+        this._falcorPathSearch  = '';         // free-text filter
+        this._falcorExpandedGrp = null;       // expanded burst group index
+        this._falcorExpandedCall= null;       // expanded call key within a group
         this._loadBaseline();
         this._loadWorkflowBaseline();
     }
@@ -1339,6 +1345,7 @@ class LdsDebugPanel extends LitElement {
             pinpoint: this._renderPinpoint,
             vitals:   this._renderVitals,
             network:  this._renderNetwork,
+            falcor:   this._renderFalcor,
             perf:     this._renderPerf,
             errors:   this._renderErrors,
             console:  this._renderConsole,
@@ -1623,6 +1630,248 @@ class LdsDebugPanel extends LitElement {
                         <span class="net-kv-val" style="color:#f38ba8">${n.error}</span>
                     </div>` : ''}
             </div>`;
+    }
+
+    // ── Falcor ─────────────────────────────────────────────────────────────
+    _renderFalcor() {
+        const r   = this._getActiveReport();
+        const all = r?.network || [];
+        const falcorAll = all.filter(n => n.decoded?.protocol === 'falcor');
+
+        if (!all.length) {
+            return html`<p class="empty">No network data — enable network tool first: <code>window.__LDS_NETWORK_ENABLED__ = true</code></p>`;
+        }
+        if (!falcorAll.length) {
+            return html`<p class="empty">No Falcor calls captured yet. Enable network monitoring and navigate to a page that loads entity data.</p>`;
+        }
+
+        // ── helpers ──────────────────────────────────────────────────────
+        const getBurstGroups = (log) => {
+            const BURST = 200;
+            const sorted = log.slice().sort((a, b) => {
+                const ta = a.ts ? new Date(a.ts).getTime() : 0;
+                const tb = b.ts ? new Date(b.ts).getTime() : 0;
+                return ta - tb;
+            });
+            const groups = [];
+            let cur = null;
+            for (const e of sorted) {
+                const ms = e.ts ? new Date(e.ts).getTime() : 0;
+                if (!cur || ms - cur._last > BURST) {
+                    if (cur) groups.push(cur);
+                    cur = { calls: [e], _last: ms };
+                } else {
+                    cur.calls.push(e);
+                    cur._last = ms;
+                }
+            }
+            if (cur) groups.push(cur);
+            return groups.reverse();
+        };
+
+        const getDataIndexGroups = (log) => {
+            const out = {};
+            for (const e of log) {
+                const di = e.decoded?.dataIndex || 'unknown';
+                if (!out[di]) out[di] = [];
+                out[di].push(e);
+            }
+            return out;
+        };
+
+        const getSearchSessions = (log) => {
+            const calls = log.filter(e => e.decoded?.isSearch && e.decoded?.method === 'call');
+            const gets  = log.filter(e => e.decoded?.isSearch && e.decoded?.method !== 'call');
+            return calls.map((c, i) => {
+                const cMs = c.ts ? new Date(c.ts).getTime() : 0;
+                const linked = gets.filter(g => g.decoded?.dataIndex === c.decoded?.dataIndex && new Date(g.ts||0).getTime() >= cMs);
+                const rid = linked[0]?.decoded?.searchRequestId || null;
+                return { sessionId: i, initiateCall: c, resultCalls: rid ? linked.filter(g=>g.decoded?.searchRequestId===rid) : linked.slice(0,10), requestId: rid };
+            });
+        };
+
+        // ── analytics ────────────────────────────────────────────────────
+        let totalPaths = 0; const diCounts = {};
+        for (const e of falcorAll) {
+            totalPaths += e.decoded?.pathCount || 0;
+            const di = e.decoded?.dataIndex || 'unknown';
+            diCounts[di] = (diCounts[di] || 0) + 1;
+        }
+        const diList = Object.keys(diCounts).sort();
+
+        // ── filter ───────────────────────────────────────────────────────
+        const search = this._falcorPathSearch.toLowerCase();
+        const filtered = falcorAll.filter(e => {
+            if (this._falcorDiFilter !== 'all' && e.decoded?.dataIndex !== this._falcorDiFilter) return false;
+            if (search) {
+                const dc = e.decoded;
+                const hay = [dc?.dataIndex, ...(dc?.entityTypes||[]), ...(dc?.fields||[]), ...(dc?.entityIds||[])].join(' ').toLowerCase();
+                if (!hay.includes(search) && !e.url?.toLowerCase().includes(search)) return false;
+            }
+            return true;
+        });
+
+        const pill = (t, color='#cba6f7') => html`<span class="tag-pill" style="background:${color}20;color:${color};border:1px solid ${color}40">${t}</span>`;
+
+        const renderCallRow = (entry, callKey) => {
+            const dc    = entry.decoded;
+            const isExp = this._falcorExpandedCall === callKey;
+            const slow  = entry.isSlow;
+            return html`
+            <div style="border-bottom:1px solid #1a1a28;padding:4px 0;cursor:pointer" @click=${()=>{ this._falcorExpandedCall = isExp ? null : callKey; }}>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                    <span style="color:#a6e3a1;font-size:10px;text-transform:uppercase;font-weight:bold;min-width:32px">${dc?.method?.toUpperCase()||'?'}</span>
+                    <span style="color:#89b4fa;font-size:11px">${dc?.dataIndex || entry.url?.split('/').pop() || '?'}</span>
+                    <span style="color:#6c7086;font-size:10px">${entry.durationMs}ms${slow?' ⚠':''}</span>
+                    <span style="color:#6c7086;font-size:10px">${dc?.pathCount||0} path${dc?.pathCount===1?'':'s'}</span>
+                    ${(dc?.entityTypes||[]).map(t=>pill(t))}
+                    <span style="color:#6c7086;font-size:11px;margin-left:auto">${isExp?'▲':'▼'}</span>
+                </div>
+                ${isExp ? html`
+                <div style="background:#0d0d1a;border-radius:4px;margin-top:6px;padding:8px;font-size:11px">
+                    <div style="color:#89b4fa;text-transform:uppercase;font-size:10px;letter-spacing:.05em;margin-bottom:6px">Path Anatomy</div>
+                    ${dc?.entityIds?.length ? html`<div style="margin-bottom:4px"><span style="color:#6c7086">Entity IDs: </span><span style="color:#f9e2af;font-size:10px">${dc.entityIds.slice(0,8).join(', ')}${dc.entityIds.length>8?` +${dc.entityIds.length-8} more`:''}</span></div>` : ''}
+                    ${dc?.fields?.length  ? html`<div style="margin-bottom:4px"><span style="color:#6c7086">Fields: </span>${dc.fields.map(f=>pill(f,'#89b4fa'))}</div>` : ''}
+                    ${dc?.paths?.length   ? html`
+                    <div style="margin-top:6px">
+                        <div style="color:#6c7086;font-size:10px;margin-bottom:4px">All ${dc.paths.length} path${dc.paths.length===1?'':'s'}:</div>
+                        ${dc.paths.slice(0,20).map((p,i) => html`
+                        <div style="font-size:10px;color:#cdd6f4;padding:2px 0;border-bottom:1px solid #1a1a2810">
+                            <span style="color:#6c7086;margin-right:6px">${i}</span>${JSON.stringify(p)}
+                        </div>`)}
+                        ${dc.paths.length>20 ? html`<div style="color:#6c7086;font-size:10px;margin-top:2px">… ${dc.paths.length-20} more paths</div>` : ''}
+                    </div>` : ''}
+                    <div style="margin-top:6px;color:#6c7086;font-size:10px">${entry.ts?.slice(0,19).replace('T',' ')} · ${entry.responseSizeKB!=null?entry.responseSizeKB+' KB':'?'}</div>
+                </div>` : ''}
+            </div>`;
+        };
+
+        // ── view modes ───────────────────────────────────────────────────
+        const viewBtn = (key, label) => html`
+            <button class="tab${this._falcorViewMode===key?' active':''}" style="font-size:11px;padding:4px 10px"
+                @click=${()=>{ this._falcorViewMode=key; this._falcorExpandedGrp=null; this._falcorExpandedCall=null; }}>
+                ${label}
+            </button>`;
+
+        let content;
+
+        if (this._falcorViewMode === 'grouped') {
+            const groups = getBurstGroups(filtered);
+            if (!groups.length) {
+                content = html`<p class="empty">No Falcor calls match current filter.</p>`;
+            } else {
+                content = groups.map((g, gi) => {
+                    const isOpen = this._falcorExpandedGrp === gi;
+                    const alertCls = g.totalMs > 2000 ? 'color:#f38ba8' : g.totalMs > 800 ? 'color:#f9e2af' : 'color:#a6e3a1';
+                    return html`
+                    <div style="border:1px solid #313244;border-radius:6px;margin-bottom:6px">
+                        <div style="padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;flex-wrap:wrap"
+                            @click=${()=>{ this._falcorExpandedGrp = isOpen ? null : gi; this._falcorExpandedCall=null; }}>
+                            <span style="color:#cba6f7;font-weight:bold;font-size:11px">Action burst</span>
+                            <span style="color:#6c7086;font-size:11px">${g.calls.length} call${g.calls.length===1?'':'s'}</span>
+                            <span style="${alertCls};font-size:11px">${g.totalMs}ms total</span>
+                            ${g.dataIndexes.map(di=>pill(di,'#89dceb'))}
+                            ${g.entityTypes.map(t=>pill(t))}
+                            <span style="color:#6c7086;font-size:11px;margin-left:auto">${isOpen?'▲':'▼'}</span>
+                        </div>
+                        ${isOpen ? html`
+                        <div style="padding:0 12px 10px">
+                            ${g.calls.map((c, ci) => renderCallRow(c, `${gi}-${ci}`))}
+                        </div>` : ''}
+                    </div>`;
+                });
+            }
+        } else if (this._falcorViewMode === 'dataindex') {
+            const groups = getDataIndexGroups(filtered);
+            content = Object.entries(groups).sort((a,b)=>b[1].length-a[1].length).map(([di, calls]) => {
+                const isOpen = this._falcorExpandedGrp === di;
+                const totalMs = calls.reduce((s,c)=>s+(c.durationMs||0),0);
+                const totalP  = calls.reduce((s,c)=>s+(c.decoded?.pathCount||0),0);
+                return html`
+                <div style="border:1px solid #313244;border-radius:6px;margin-bottom:6px">
+                    <div style="padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;flex-wrap:wrap"
+                        @click=${()=>{ this._falcorExpandedGrp = isOpen ? null : di; this._falcorExpandedCall=null; }}>
+                        ${pill(di,'#89dceb')}
+                        <span style="color:#6c7086;font-size:11px">${calls.length} call${calls.length===1?'':'s'} · ${totalP} paths · ${totalMs}ms</span>
+                        <span style="color:#6c7086;font-size:11px;margin-left:auto">${isOpen?'▲':'▼'}</span>
+                    </div>
+                    ${isOpen ? html`
+                    <div style="padding:0 12px 10px">
+                        ${calls.map((c,ci) => renderCallRow(c, `di-${di}-${ci}`))}
+                    </div>` : ''}
+                </div>`;
+            });
+        } else {
+            // search sessions view
+            const sessions = getSearchSessions(filtered);
+            if (!sessions.length) {
+                content = html`<p class="empty">No search sessions detected. Search sessions require a Falcor CALL to searchResults.create followed by paginated GETs.</p>`;
+            } else {
+                content = sessions.map((s, si) => {
+                    const isOpen = this._falcorExpandedGrp === si;
+                    return html`
+                    <div style="border:1px solid #313244;border-radius:6px;margin-bottom:6px">
+                        <div style="padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;flex-wrap:wrap"
+                            @click=${()=>{ this._falcorExpandedGrp = isOpen ? null : si; this._falcorExpandedCall=null; }}>
+                            <span style="color:#cba6f7;font-weight:bold;font-size:11px">Search session ${si+1}</span>
+                            ${s.requestId ? html`<span style="color:#f9e2af;font-size:10px">requestId: ${s.requestId}</span>` : ''}
+                            <span style="color:#6c7086;font-size:11px">${s.resultCalls.length} result page${s.resultCalls.length===1?'':'s'}</span>
+                            <span style="color:#6c7086;font-size:11px;margin-left:auto">${isOpen?'▲':'▼'}</span>
+                        </div>
+                        ${isOpen ? html`
+                        <div style="padding:0 12px 10px">
+                            <div style="color:#a6e3a1;font-size:10px;margin-bottom:4px">CALL — initiate search</div>
+                            ${renderCallRow(s.initiateCall, `s-${si}-init`)}
+                            ${s.resultCalls.length ? html`<div style="color:#89b4fa;font-size:10px;margin:6px 0 4px">GET — result pages (${s.resultCalls.length})</div>` : ''}
+                            ${s.resultCalls.map((c,ci) => renderCallRow(c, `s-${si}-r${ci}`))}
+                        </div>` : ''}
+                    </div>`;
+                });
+            }
+        }
+
+        // ── analytics chips ───────────────────────────────────────────────
+        const fieldFreq = {}; const etFreq = {};
+        for (const e of falcorAll) {
+            (e.decoded?.fields      ||[]).forEach(f=>{ fieldFreq[f]=(fieldFreq[f]||0)+1; });
+            (e.decoded?.entityTypes ||[]).forEach(t=>{ etFreq[t]=(etFreq[t]||0)+1; });
+        }
+        const topFields = Object.entries(fieldFreq).sort((a,b)=>b[1]-a[1]).slice(0,8);
+        const topTypes  = Object.entries(etFreq).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+        return html`
+            <div style="display:flex;align-items:center;gap:8px;padding:6px 0;flex-wrap:wrap;border-bottom:1px solid #313244;margin-bottom:8px">
+                <div class="tabs" style="margin:0">
+                    ${viewBtn('grouped','Grouped')}
+                    ${viewBtn('dataindex','By DataIndex')}
+                    ${viewBtn('search','Search Sessions')}
+                </div>
+                <span style="color:#6c7086;font-size:11px;margin-left:8px">${falcorAll.length} calls · ${totalPaths} paths · ${diList.length} dataIndex${diList.length===1?'':'es'}</span>
+            </div>
+            <div class="filter-bar">
+                <select class="filter-select" .value=${this._falcorDiFilter} @change=${e=>{ this._falcorDiFilter=e.target.value; this._falcorExpandedGrp=null; this._falcorExpandedCall=null; }}>
+                    <option value="all">All dataIndexes</option>
+                    ${diList.map(di=>html`<option value="${di}">${di} (${diCounts[di]})</option>`)}
+                </select>
+                <input class="filter-input" type="text" placeholder="Filter by entityType, field, entityId…"
+                    .value=${this._falcorPathSearch}
+                    @input=${e=>{ this._falcorPathSearch=e.target.value; this._falcorExpandedGrp=null; this._falcorExpandedCall=null; }}>
+            </div>
+            <div style="padding:4px 0">${content}</div>
+            ${(topFields.length || topTypes.length) ? html`
+            <div style="border-top:1px solid #313244;margin-top:8px;padding-top:8px">
+                <div style="color:#6c7086;font-size:10px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Session analytics</div>
+                ${topTypes.length ? html`
+                <div style="margin-bottom:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                    <span style="color:#6c7086;font-size:10px;min-width:80px">Entity types:</span>
+                    ${topTypes.map(([t,c])=>html`<span class="tag-pill">${t} <span style="color:#6c7086">${c}×</span></span>`)}
+                </div>` : ''}
+                ${topFields.length ? html`
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                    <span style="color:#6c7086;font-size:10px;min-width:80px">Top fields:</span>
+                    ${topFields.map(([f,c])=>html`<span class="tag-pill" style="background:#89b4fa20;color:#89b4fa;border:1px solid #89b4fa40">${f} <span style="color:#6c7086">${c}×</span></span>`)}
+                </div>` : ''}
+            </div>` : ''}`;
     }
 
     // ── Performance ────────────────────────────────────────────────────────

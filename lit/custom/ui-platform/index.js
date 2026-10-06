@@ -28,3 +28,4 @@ installSlowApi();
 export { attachToElement, installGlobalAciPatch } from './AciPlugin.js';
 export { decodeFalcor } from './FalcorDecoder.js';
 export { install as installSlowApi } from './SyndigoSlowApiPlugin.js';
+export { getBurstGroups, getDataIndexGroups, getSearchSessions, getPathAnalytics, getDuplicatePaths } from './FalcorNetworkEnhancer.js';
