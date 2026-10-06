@@ -53,7 +53,18 @@ Add the panel to your page (or let the Chrome extension inject it):
 | `slowApi`       | `__LDS_SLOW_API_LOG__`                     | API calls over threshold |
 | `console`       | `__LDS_CONSOLE__`                          | console.error / .warn ring buffer |
 | `memory`        | `__LDS_MEMORY__`, `__LDS_STORMS__`         | mount/unmount/GC tracking |
+| `resourceTracker` | `__LDS_RESOURCE_VIOLATIONS__`, `__LDS_MOUNT_CYCLES__` | individual listener lifetime tracking, violation detection |
 | `errorBoundary` | `__LDS_ERRORS__`                           | render crash capture (always-on) |
+
+---
+
+## Phase 7–9 features
+
+**Phase 7 — Evidence grading:** Every Pinpoint finding now shows an evidence level badge (`observation` → `correlation` → `attribution` → `lifetime-violation`). The Fix Table export uses a structured `evidenceCapsule` instead of a plain `claudePrompt` string. Memory leak detection uses multi-cycle slope analysis to distinguish real leaks from single-session spikes. See [USER-GUIDE.md §3](USER-GUIDE.md#3-phase-7--evidence-quality) for details.
+
+**Phase 8 — Verification loop:** After applying a fix, use "📸 Capture Baseline" + "▶ Replay to verify fix" in the Pinpoint tab to get an automated before/after comparison. A ✅ VERIFIED badge appears on findings where the primary metric improved ≥70%. See [USER-GUIDE.md §4](USER-GUIDE.md#4-phase-8--verification-loop).
+
+**Phase 9 — Resource lifetime tracking:** Enable `window.__LDS_RESOURCE_TRACKER__ = true` to track individual event listeners. When an element disconnects with unreleased listeners, a `resource-outlived-owner` finding appears in Pinpoint at evidence level `lifetime-violation`. See [USER-GUIDE.md §5](USER-GUIDE.md#5-phase-9--resource-lifetime-model).
 
 ---
 
@@ -173,6 +184,10 @@ class ReactAdapter extends FrameworkAdapter {
 | `window.__LDS_SLOW_API_MS__` | Slow API threshold in ms (default 1000) |
 | `window.__LDS_THRASH_THRESHOLD__` | Prop set count/sec before thrash alert (default 5) |
 | `window.__LDS_STACK_FILTER_RE__` | RegExp for stack frame app-only filtering |
+| `window.__LDS_RESOURCE_TRACKER__` | `true` to enable Phase 9 resource lifetime tracking |
+| `window.__LDS_SUPPRESS_EVENTS__` | Array of event names to exclude from resource tracking (Phase 9) |
+| `window.__LDS_MOUNT_CYCLES__` | Per-visibility-cycle mount counts — read-only, used by Phase 7 |
+| `window.__LDS_RESOURCE_VIOLATIONS__` | Array of lifetime violation records — read-only (Phase 9) |
 
 ---
 
