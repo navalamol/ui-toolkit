@@ -823,6 +823,11 @@ class LdsDebugPanel extends LitElement {
             _expandedNetIdx:  { state: true },
             _diffSelected:    { state: true },
             _diffView:        { state: true },
+            _falcorViewMode:    { state: true },
+            _falcorDiFilter:    { state: true },
+            _falcorPathSearch:  { state: true },
+            _falcorExpandedGrp: { state: true },
+            _falcorExpandedCall:{ state: true },
         };
     }
 
@@ -1700,14 +1705,22 @@ class LdsDebugPanel extends LitElement {
             });
         };
 
-        // ── analytics ────────────────────────────────────────────────────
+        // ── session-wide analytics (computed once) ───────────────────────
         let totalPaths = 0; const diCounts = {};
+        const fieldFreq = {}; const etFreq = {};
+        const pathKeyCount = {};   // for duplicate detection
         for (const e of falcorAll) {
             totalPaths += e.decoded?.pathCount || 0;
             const di = e.decoded?.dataIndex || 'unknown';
             diCounts[di] = (diCounts[di] || 0) + 1;
+            (e.decoded?.fields      ||[]).forEach(f=>{ fieldFreq[f]=(fieldFreq[f]||0)+1; });
+            (e.decoded?.entityTypes ||[]).forEach(t=>{ etFreq[t]=(etFreq[t]||0)+1; });
+            (e.decoded?.paths       ||[]).forEach(p=>{ const k=JSON.stringify(p); pathKeyCount[k]=(pathKeyCount[k]||0)+1; });
         }
-        const diList = Object.keys(diCounts).sort();
+        const diList    = Object.keys(diCounts).sort();
+        const topFields = Object.entries(fieldFreq).sort((a,b)=>b[1]-a[1]).slice(0,10);
+        const topTypes  = Object.entries(etFreq).sort((a,b)=>b[1]-a[1]).slice(0,8);
+        const dupePaths = Object.keys(pathKeyCount).filter(k=>pathKeyCount[k]>1).length;
 
         // ── filter ───────────────────────────────────────────────────────
         const search = this._falcorPathSearch.toLowerCase();
@@ -1721,42 +1734,69 @@ class LdsDebugPanel extends LitElement {
             return true;
         });
 
+        // ── render helpers ────────────────────────────────────────────────
         const pill = (t, color='#cba6f7') => html`<span class="tag-pill" style="background:${color}20;color:${color};border:1px solid ${color}40">${t}</span>`;
 
-        const renderCallRow = (entry, callKey) => {
-            const dc    = entry.decoded;
-            const isExp = this._falcorExpandedCall === callKey;
-            const slow  = entry.isSlow;
+        // dupeCount for a single call: how many of its paths were seen in other calls
+        const callDupes = (entry) => (entry.decoded?.paths||[]).filter(p=>pathKeyCount[JSON.stringify(p)]>1).length;
+
+        const renderCallRow = (entry, callKey, offsetMs) => {
+            const dc      = entry.decoded;
+            const isExp   = this._falcorExpandedCall === callKey;
+            const ms      = entry.durationMs || 0;
+            const msColor = ms > 1000 ? '#f38ba8' : ms > 500 ? '#f9e2af' : '#a6e3a1';
+            const dupes   = callDupes(entry);
+            const idCount = dc?.entityIds?.length || 0;
             return html`
-            <div style="border-bottom:1px solid #1a1a28;padding:4px 0;cursor:pointer" @click=${()=>{ this._falcorExpandedCall = isExp ? null : callKey; }}>
+            <div style="border-bottom:1px solid #1a1a28;padding:5px 0;cursor:pointer" @click=${()=>{ this._falcorExpandedCall = isExp ? null : callKey; }}>
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                    <span style="color:#a6e3a1;font-size:10px;text-transform:uppercase;font-weight:bold;min-width:32px">${dc?.method?.toUpperCase()||'?'}</span>
-                    <span style="color:#89b4fa;font-size:11px">${dc?.dataIndex || entry.url?.split('/').pop() || '?'}</span>
-                    <span style="color:#6c7086;font-size:10px">${entry.durationMs}ms${slow?' ⚠':''}</span>
-                    <span style="color:#6c7086;font-size:10px">${dc?.pathCount||0} path${dc?.pathCount===1?'':'s'}</span>
+                    <span style="color:#a6e3a1;font-size:10px;font-weight:bold;min-width:28px">${(dc?.method||'?').toUpperCase()}</span>
+                    <span style="color:#89b4fa;font-size:11px;font-weight:bold">${dc?.dataIndex || '?'}</span>
+                    <span style="color:${msColor};font-size:10px;font-weight:bold">${ms}ms</span>
+                    ${offsetMs != null ? html`<span style="color:#6c7086;font-size:10px">+${offsetMs}ms</span>` : ''}
+                    <span style="color:#6c7086;font-size:10px">${dc?.pathCount||0}p</span>
+                    ${idCount ? html`<span style="color:#f9e2af;font-size:10px">${idCount} ID${idCount===1?'':'s'}</span>` : ''}
+                    ${dupes ? html`<span style="color:#fab387;font-size:10px" title="${dupes} paths seen in other calls">⚠ ${dupes} dup${dupes===1?'':'s'}</span>` : ''}
                     ${(dc?.entityTypes||[]).map(t=>pill(t))}
-                    <span style="color:#6c7086;font-size:11px;margin-left:auto">${isExp?'▲':'▼'}</span>
+                    ${entry.responseSizeKB != null ? html`<span style="color:#6c7086;font-size:10px;margin-left:auto">${entry.responseSizeKB}KB</span>` : ''}
+                    <span style="color:#6c7086;font-size:11px">${isExp?'▲':'▼'}</span>
                 </div>
                 ${isExp ? html`
                 <div style="background:#0d0d1a;border-radius:4px;margin-top:6px;padding:8px;font-size:11px">
-                    <div style="color:#89b4fa;text-transform:uppercase;font-size:10px;letter-spacing:.05em;margin-bottom:6px">Path Anatomy</div>
-                    ${dc?.entityIds?.length ? html`<div style="margin-bottom:4px"><span style="color:#6c7086">Entity IDs: </span><span style="color:#f9e2af;font-size:10px">${dc.entityIds.slice(0,8).join(', ')}${dc.entityIds.length>8?` +${dc.entityIds.length-8} more`:''}</span></div>` : ''}
-                    ${dc?.fields?.length  ? html`<div style="margin-bottom:4px"><span style="color:#6c7086">Fields: </span>${dc.fields.map(f=>pill(f,'#89b4fa'))}</div>` : ''}
-                    ${dc?.paths?.length   ? html`
-                    <div style="margin-top:6px">
-                        <div style="color:#6c7086;font-size:10px;margin-bottom:4px">All ${dc.paths.length} path${dc.paths.length===1?'':'s'}:</div>
-                        ${dc.paths.slice(0,20).map((p,i) => html`
-                        <div style="font-size:10px;color:#cdd6f4;padding:2px 0;border-bottom:1px solid #1a1a2810">
-                            <span style="color:#6c7086;margin-right:6px">${i}</span>${JSON.stringify(p)}
-                        </div>`)}
-                        ${dc.paths.length>20 ? html`<div style="color:#6c7086;font-size:10px;margin-top:2px">… ${dc.paths.length-20} more paths</div>` : ''}
+                    ${dc?.entityIds?.length ? html`
+                    <div style="margin-bottom:6px">
+                        <span style="color:#6c7086">Entity IDs (${dc.entityIds.length}): </span>
+                        <span style="color:#f9e2af;font-size:10px;word-break:break-all">${dc.entityIds.slice(0,12).join(', ')}${dc.entityIds.length>12?` … +${dc.entityIds.length-12} more`:''}</span>
                     </div>` : ''}
-                    <div style="margin-top:6px;color:#6c7086;font-size:10px">${entry.ts?.slice(0,19).replace('T',' ')} · ${entry.responseSizeKB!=null?entry.responseSizeKB+' KB':'?'}</div>
+                    ${dc?.fields?.length ? html`
+                    <div style="margin-bottom:6px">
+                        <span style="color:#6c7086">Fields (${dc.fields.length}): </span>
+                        ${dc.fields.map(f => {
+                            const fc = fieldFreq[f]||0;
+                            return html`<span class="tag-pill" style="background:#89b4fa20;color:#89b4fa;border:1px solid #89b4fa40">${f}${fc>1?html` <span style="color:#6c7086">${fc}×</span>`:''}` + '</span>';
+                        })}
+                    </div>` : ''}
+                    ${dc?.paths?.length ? html`
+                    <div style="margin-top:4px">
+                        <div style="color:#6c7086;font-size:10px;margin-bottom:4px">${dc.paths.length} path${dc.paths.length===1?'':'s'}:</div>
+                        ${dc.paths.slice(0,20).map((p,i) => {
+                            const k=JSON.stringify(p); const isDup=(pathKeyCount[k]||0)>1;
+                            return html`<div style="font-size:10px;padding:2px 0;border-bottom:1px solid #1a1a2810;color:${isDup?'#fab387':'#cdd6f4'}">
+                                <span style="color:#6c7086;margin-right:6px">${i}</span>${k}${isDup?html` <span style="color:#fab387;font-size:9px">DUP</span>`:''}
+                            </div>`;
+                        })}
+                        ${dc.paths.length>20 ? html`<div style="color:#6c7086;font-size:10px;margin-top:2px">… ${dc.paths.length-20} more</div>` : ''}
+                    </div>` : ''}
+                    <div style="margin-top:6px;color:#6c7086;font-size:10px;display:flex;gap:12px">
+                        <span>${entry.ts?.slice(11,19)||'?'}</span>
+                        ${entry.responseSizeKB!=null?html`<span>${entry.responseSizeKB} KB</span>`:''}
+                        ${entry.error?html`<span style="color:#f38ba8">${entry.error}</span>`:''}
+                    </div>
                 </div>` : ''}
             </div>`;
         };
 
-        // ── view modes ───────────────────────────────────────────────────
+        // ── view mode buttons ─────────────────────────────────────────────
         const viewBtn = (key, label) => html`
             <button class="tab${this._falcorViewMode===key?' active':''}" style="font-size:11px;padding:4px 10px"
                 @click=${()=>{ this._falcorViewMode=key; this._falcorExpandedGrp=null; this._falcorExpandedCall=null; }}>
@@ -1771,22 +1811,37 @@ class LdsDebugPanel extends LitElement {
                 content = html`<p class="empty">No Falcor calls match current filter.</p>`;
             } else {
                 content = groups.map((g, gi) => {
-                    const isOpen = this._falcorExpandedGrp === gi;
-                    const alertCls = g.totalMs > 2000 ? 'color:#f38ba8' : g.totalMs > 800 ? 'color:#f9e2af' : 'color:#a6e3a1';
+                    const isOpen   = this._falcorExpandedGrp === gi;
+                    const msColor  = g.totalMs > 2000 ? '#f38ba8' : g.totalMs > 800 ? '#f9e2af' : '#a6e3a1';
+                    // burst start ms for relative offsets
+                    const bStartMs = g.calls.reduce((mn,c)=>{ const t=c.ts?new Date(c.ts).getTime():0; return t<mn?t:mn; }, Infinity);
+                    // dataIndex breakdown: entityData×3, entityGovernData×2
+                    const diBreak  = {}; g.calls.forEach(c=>{ const d=c.decoded?.dataIndex||'?'; diBreak[d]=(diBreak[d]||0)+1; });
+                    // unique entity IDs across burst
+                    const burstIds = new Set(); g.calls.forEach(c=>(c.decoded?.entityIds||[]).forEach(id=>burstIds.add(id)));
+                    // total duplicate paths in burst
+                    const burstDupes = g.calls.reduce((s,c)=>s+callDupes(c),0);
+                    // parallel vs sequential: are all calls within 100ms of each other?
+                    const callTimes = g.calls.map(c=>c.ts?new Date(c.ts).getTime():0);
+                    const isParallel = g.calls.length > 1 && (Math.max(...callTimes) - Math.min(...callTimes)) < 100;
                     return html`
                     <div style="border:1px solid #313244;border-radius:6px;margin-bottom:6px">
                         <div style="padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;flex-wrap:wrap"
                             @click=${()=>{ this._falcorExpandedGrp = isOpen ? null : gi; this._falcorExpandedCall=null; }}>
-                            <span style="color:#cba6f7;font-weight:bold;font-size:11px">Action burst</span>
-                            <span style="color:#6c7086;font-size:11px">${g.calls.length} call${g.calls.length===1?'':'s'}</span>
-                            <span style="${alertCls};font-size:11px">${g.totalMs}ms total</span>
-                            ${g.dataIndexes.map(di=>pill(di,'#89dceb'))}
-                            ${g.entityTypes.map(t=>pill(t))}
+                            <span style="color:#cba6f7;font-weight:bold;font-size:11px">Burst ${gi+1}</span>
+                            <span style="color:${msColor};font-size:11px;font-weight:bold">${g.totalMs}ms</span>
+                            ${Object.entries(diBreak).map(([di,cnt])=>pill(`${di}×${cnt}`,'#89dceb'))}
+                            ${burstIds.size ? html`<span style="color:#f9e2af;font-size:10px">${burstIds.size} ID${burstIds.size===1?'':'s'}</span>` : ''}
+                            ${isParallel ? html`<span style="color:#a6e3a1;font-size:10px">parallel</span>` : g.calls.length>1 ? html`<span style="color:#f9e2af;font-size:10px">sequential</span>` : ''}
+                            ${burstDupes ? html`<span style="color:#fab387;font-size:10px">⚠ ${burstDupes} dup path${burstDupes===1?'':'s'}</span>` : ''}
                             <span style="color:#6c7086;font-size:11px;margin-left:auto">${isOpen?'▲':'▼'}</span>
                         </div>
                         ${isOpen ? html`
                         <div style="padding:0 12px 10px">
-                            ${g.calls.map((c, ci) => renderCallRow(c, `${gi}-${ci}`))}
+                            ${g.calls.map((c,ci) => {
+                                const cMs = c.ts?new Date(c.ts).getTime():0;
+                                return renderCallRow(c, `${gi}-${ci}`, bStartMs===Infinity?null:cMs-bStartMs);
+                            })}
                         </div>` : ''}
                     </div>`;
                 });
@@ -1794,60 +1849,57 @@ class LdsDebugPanel extends LitElement {
         } else if (this._falcorViewMode === 'dataindex') {
             const groups = getDataIndexGroups(filtered);
             content = Object.entries(groups).sort((a,b)=>b[1].length-a[1].length).map(([di, calls]) => {
-                const isOpen = this._falcorExpandedGrp === di;
+                const isOpen  = this._falcorExpandedGrp === di;
                 const totalMs = calls.reduce((s,c)=>s+(c.durationMs||0),0);
                 const totalP  = calls.reduce((s,c)=>s+(c.decoded?.pathCount||0),0);
+                const totalId = new Set(calls.flatMap(c=>c.decoded?.entityIds||[])).size;
+                const msColor = totalMs > 3000 ? '#f38ba8' : totalMs > 1000 ? '#f9e2af' : '#a6e3a1';
                 return html`
                 <div style="border:1px solid #313244;border-radius:6px;margin-bottom:6px">
                     <div style="padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;flex-wrap:wrap"
                         @click=${()=>{ this._falcorExpandedGrp = isOpen ? null : di; this._falcorExpandedCall=null; }}>
                         ${pill(di,'#89dceb')}
-                        <span style="color:#6c7086;font-size:11px">${calls.length} call${calls.length===1?'':'s'} · ${totalP} paths · ${totalMs}ms</span>
+                        <span style="color:#6c7086;font-size:11px">${calls.length} call${calls.length===1?'':'s'}</span>
+                        <span style="color:#6c7086;font-size:11px">${totalP} paths</span>
+                        ${totalId ? html`<span style="color:#f9e2af;font-size:10px">${totalId} unique ID${totalId===1?'':'s'}</span>` : ''}
+                        <span style="color:${msColor};font-size:11px;font-weight:bold">${totalMs}ms</span>
                         <span style="color:#6c7086;font-size:11px;margin-left:auto">${isOpen?'▲':'▼'}</span>
                     </div>
                     ${isOpen ? html`
                     <div style="padding:0 12px 10px">
-                        ${calls.map((c,ci) => renderCallRow(c, `di-${di}-${ci}`))}
+                        ${calls.map((c,ci) => renderCallRow(c, `di-${di}-${ci}`, null))}
                     </div>` : ''}
                 </div>`;
             });
         } else {
-            // search sessions view
             const sessions = getSearchSessions(filtered);
             if (!sessions.length) {
                 content = html`<p class="empty">No search sessions detected. Search sessions require a Falcor CALL to searchResults.create followed by paginated GETs.</p>`;
             } else {
                 content = sessions.map((s, si) => {
                     const isOpen = this._falcorExpandedGrp === si;
+                    const totalMs = (s.initiateCall.durationMs||0) + s.resultCalls.reduce((sum,c)=>sum+(c.durationMs||0),0);
                     return html`
                     <div style="border:1px solid #313244;border-radius:6px;margin-bottom:6px">
                         <div style="padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;flex-wrap:wrap"
                             @click=${()=>{ this._falcorExpandedGrp = isOpen ? null : si; this._falcorExpandedCall=null; }}>
-                            <span style="color:#cba6f7;font-weight:bold;font-size:11px">Search session ${si+1}</span>
-                            ${s.requestId ? html`<span style="color:#f9e2af;font-size:10px">requestId: ${s.requestId}</span>` : ''}
-                            <span style="color:#6c7086;font-size:11px">${s.resultCalls.length} result page${s.resultCalls.length===1?'':'s'}</span>
+                            <span style="color:#cba6f7;font-weight:bold;font-size:11px">Search ${si+1}</span>
+                            ${s.requestId ? html`<span style="color:#f9e2af;font-size:10px">${s.requestId.slice(0,16)}…</span>` : ''}
+                            <span style="color:#6c7086;font-size:11px">${s.resultCalls.length} page${s.resultCalls.length===1?'':'s'}</span>
+                            <span style="color:#a6e3a1;font-size:11px">${totalMs}ms total</span>
                             <span style="color:#6c7086;font-size:11px;margin-left:auto">${isOpen?'▲':'▼'}</span>
                         </div>
                         ${isOpen ? html`
                         <div style="padding:0 12px 10px">
-                            <div style="color:#a6e3a1;font-size:10px;margin-bottom:4px">CALL — initiate search</div>
-                            ${renderCallRow(s.initiateCall, `s-${si}-init`)}
-                            ${s.resultCalls.length ? html`<div style="color:#89b4fa;font-size:10px;margin:6px 0 4px">GET — result pages (${s.resultCalls.length})</div>` : ''}
-                            ${s.resultCalls.map((c,ci) => renderCallRow(c, `s-${si}-r${ci}`))}
+                            <div style="color:#a6e3a1;font-size:10px;padding:4px 0">CALL — searchResults.create</div>
+                            ${renderCallRow(s.initiateCall, `s-${si}-init`, null)}
+                            ${s.resultCalls.length ? html`<div style="color:#89b4fa;font-size:10px;padding:6px 0 4px">GET — result pages</div>` : ''}
+                            ${s.resultCalls.map((c,ci) => renderCallRow(c, `s-${si}-r${ci}`, null))}
                         </div>` : ''}
                     </div>`;
                 });
             }
         }
-
-        // ── analytics chips ───────────────────────────────────────────────
-        const fieldFreq = {}; const etFreq = {};
-        for (const e of falcorAll) {
-            (e.decoded?.fields      ||[]).forEach(f=>{ fieldFreq[f]=(fieldFreq[f]||0)+1; });
-            (e.decoded?.entityTypes ||[]).forEach(t=>{ etFreq[t]=(etFreq[t]||0)+1; });
-        }
-        const topFields = Object.entries(fieldFreq).sort((a,b)=>b[1]-a[1]).slice(0,8);
-        const topTypes  = Object.entries(etFreq).sort((a,b)=>b[1]-a[1]).slice(0,8);
 
         return html`
             <div style="display:flex;align-items:center;gap:8px;padding:6px 0;flex-wrap:wrap;border-bottom:1px solid #313244;margin-bottom:8px">
@@ -1856,7 +1908,8 @@ class LdsDebugPanel extends LitElement {
                     ${viewBtn('dataindex','By DataIndex')}
                     ${viewBtn('search','Search Sessions')}
                 </div>
-                <span style="color:#6c7086;font-size:11px;margin-left:8px">${falcorAll.length} calls · ${totalPaths} paths · ${diList.length} dataIndex${diList.length===1?'':'es'}</span>
+                <span style="color:#6c7086;font-size:11px;margin-left:8px">${falcorAll.length} calls · ${totalPaths} paths · ${diList.length} dataIndex${diList.length===1?'':'es'}${dupePaths?html` · <span style="color:#fab387">${dupePaths} dup path${dupePaths===1?'':'s'}</span>`:''}
+                </span>
             </div>
             <div class="filter-bar">
                 <select class="filter-select" .value=${this._falcorDiFilter} @change=${e=>{ this._falcorDiFilter=e.target.value; this._falcorExpandedGrp=null; this._falcorExpandedCall=null; }}>
@@ -1868,20 +1921,24 @@ class LdsDebugPanel extends LitElement {
                     @input=${e=>{ this._falcorPathSearch=e.target.value; this._falcorExpandedGrp=null; this._falcorExpandedCall=null; }}>
             </div>
             <div style="padding:4px 0">${content}</div>
-            ${(topFields.length || topTypes.length) ? html`
             <div style="border-top:1px solid #313244;margin-top:8px;padding-top:8px">
                 <div style="color:#6c7086;font-size:10px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Session analytics</div>
                 ${topTypes.length ? html`
-                <div style="margin-bottom:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                    <span style="color:#6c7086;font-size:10px;min-width:80px">Entity types:</span>
-                    ${topTypes.map(([t,c])=>html`<span class="tag-pill">${t} <span style="color:#6c7086">${c}×</span></span>`)}
+                <div style="margin-bottom:6px;display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap">
+                    <span style="color:#6c7086;font-size:10px;min-width:90px;padding-top:2px">Entity types:</span>
+                    <div style="display:flex;flex-wrap:wrap;gap:3px">${topTypes.map(([t,c])=>html`<span class="tag-pill">${t} <span style="color:#6c7086">${c}×</span></span>`)}</div>
                 </div>` : ''}
                 ${topFields.length ? html`
-                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                    <span style="color:#6c7086;font-size:10px;min-width:80px">Top fields:</span>
-                    ${topFields.map(([f,c])=>html`<span class="tag-pill" style="background:#89b4fa20;color:#89b4fa;border:1px solid #89b4fa40">${f} <span style="color:#6c7086">${c}×</span></span>`)}
+                <div style="margin-bottom:6px;display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap">
+                    <span style="color:#6c7086;font-size:10px;min-width:90px;padding-top:2px">Top fields:</span>
+                    <div style="display:flex;flex-wrap:wrap;gap:3px">${topFields.map(([f,c])=>html`<span class="tag-pill" style="background:#89b4fa20;color:#89b4fa;border:1px solid #89b4fa40">${f} <span style="color:#6c7086">${c}×</span></span>`)}</div>
                 </div>` : ''}
-            </div>` : ''}`;
+                ${dupePaths ? html`
+                <div style="display:flex;align-items:center;gap:6px;padding:4px 0">
+                    <span style="color:#fab387;font-size:10px">⚠ ${dupePaths} duplicate path${dupePaths===1?'':'s'} detected — same data requested in multiple separate calls. Consider batching these.</span>
+                </div>` : html`
+                <div style="color:#a6e3a1;font-size:10px">No duplicate paths — all requests are unique.</div>`}
+            </div>`;
     }
 
     // ── Performance ────────────────────────────────────────────────────────
