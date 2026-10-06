@@ -135,6 +135,7 @@ function _collectReport(note = '') {
         renderReasons:  window.__LDS_RENDER_REASONS__ ? { ...window.__LDS_RENDER_REASONS__ } : null,
         thrash:         [...(window.__LDS_THRASH__ || [])],
         cycles:         [...(window.__LDS_CYCLES__ || [])],
+        mountCycles:    window.__LDS_MOUNT_CYCLES__ ? window.__LDS_MOUNT_CYCLES__.map(c => ({ ...c, counts: { ...c.counts } })) : [],
         domStats:       _captureDomStats(),
     };
 }
@@ -205,6 +206,41 @@ function _componentHealthScore(tag, report) {
     return Math.max(0, Math.min(100, Math.round(score)));
 }
 
+// ── Phase 7: Evidence helpers ──────────────────────────────────────────────
+function _isProgressiveLeakFromReport(tag, mountCycles) {
+    if (!mountCycles || mountCycles.length < 3) return false;
+    const completed = mountCycles.filter(c => c.endTs);
+    if (completed.length < 3) return false;
+    const actives = completed.map(c => {
+        const s = (c.counts || {})[tag] || { mounted: 0, unmounted: 0 };
+        return Math.max(0, s.mounted - s.unmounted);
+    });
+    let growCount = 0;
+    for (let i = 1; i < actives.length; i++) {
+        if (actives[i] > actives[i - 1]) growCount++;
+    }
+    return growCount === actives.length - 1 && growCount >= 2;
+}
+
+// Five-level evidence ladder: observation < correlation < attribution < lifetime-violation < causality-confirmed
+function _computeEvidenceLevel(issue, report) {
+    const hasStack = (issue.callStacks || []).length > 0;
+    const hasLine  = hasStack && _extractLineNumber((issue.callStacks || [])[0]) !== null;
+    const perf     = (report.perf || {})[issue.component] || {};
+    const avgTTIms = perf.count > 0 ? Math.round(perf.totalMs / perf.count) : 0;
+    switch (issue.issueType) {
+        case 'runtime-error':   return hasLine ? 'attribution' : 'observation';
+        case 'render-storm':    return avgTTIms > 200 ? 'correlation' : 'observation';
+        case 'slow-render':     return hasLine ? 'attribution' : 'observation';
+        case 'high-avg-tti':    return 'observation';
+        case 'memory-leak':     return (issue.observed && issue.observed.leakType === 'progressive-leak') ? 'correlation' : 'observation';
+        case 'network-error':   return 'observation';
+        case 'property-thrash': return hasLine ? 'attribution' : 'correlation';
+        case 'circular-update': return hasLine ? 'attribution' : 'correlation';
+        default:                return 'observation';
+    }
+}
+
 // ── Pinpoint issues ────────────────────────────────────────────────────────
 function _buildPinpointIssues(report) {
     const issues = [];
@@ -213,10 +249,13 @@ function _buildPinpointIssues(report) {
     const byErrorTag = {};
     (report.errors || []).forEach(e => { (byErrorTag[e.tag] = byErrorTag[e.tag] || []).push(e); });
     Object.entries(byErrorTag).forEach(([tag, errs]) => {
-        issues.push({ id: `error-${tag}`, component: tag, filePath: _tagToFilePath(tag), issueType: 'runtime-error', severity: 'critical',
+        const iss = { id: `error-${tag}`, component: tag, filePath: _tagToFilePath(tag), issueType: 'runtime-error', severity: 'critical',
             details: errs.map(e => `[${e.phase}] ${e.message}`).join('\n'),
             callStacks: errs.map(e => e.stack).filter(Boolean),
-            recommendation: 'Crash caught by LdsErrorBoundary. Inspect the stack trace. Check for null/undefined dereferences in performUpdate() or _propertiesChanged().' });
+            recommendation: 'Crash caught by LdsErrorBoundary. Inspect the stack trace. Check for null/undefined dereferences in performUpdate() or _propertiesChanged().',
+            observed: { errorCount: errs.length, phases: errs.map(e => e.phase) } };
+        iss.evidenceLevel = _computeEvidenceLevel(iss, report);
+        issues.push(iss);
     });
 
     // Render storms
@@ -224,10 +263,15 @@ function _buildPinpointIssues(report) {
     (report.storms || []).forEach(s => { (byStormTag[s.tag] = byStormTag[s.tag] || []).push(s); });
     Object.entries(byStormTag).forEach(([tag, incidents]) => {
         const maxCount = Math.max(...incidents.map(i => i.count));
-        issues.push({ id: `storm-${tag}`, component: tag, filePath: _tagToFilePath(tag), issueType: 'render-storm', severity: 'high',
+        const perfData = (report.perf || {})[tag] || {};
+        const avgTTIms = perfData.count > 0 ? Math.round(perfData.totalMs / perfData.count) : 0;
+        const iss = { id: `storm-${tag}`, component: tag, filePath: _tagToFilePath(tag), issueType: 'render-storm', severity: 'high',
             details: `<${tag}> mounted ${maxCount}× in session. Storm at: ${incidents.map(i => i.count).join(', ')} mounts.`,
             callStacks: incidents.map(i => i.stack).filter(Boolean),
-            recommendation: 'Check parent for property bindings that change on every update (new object/array literals in templates). Verify connectedCallback does not cause re-mount via DOM manipulation.' });
+            recommendation: 'Check parent for property bindings that change on every update (new object/array literals in templates). Verify connectedCallback does not cause re-mount via DOM manipulation.',
+            observed: { mountCount: maxCount, avgTTIms } };
+        iss.evidenceLevel = _computeEvidenceLevel(iss, report);
+        issues.push(iss);
     });
 
     // Slow render incidents
@@ -235,10 +279,13 @@ function _buildPinpointIssues(report) {
     (report.slowRenders || []).forEach(r => { (bySlowTag[r.tag] = bySlowTag[r.tag] || []).push(r); });
     Object.entries(bySlowTag).forEach(([tag, incidents]) => {
         const maxMs = Math.max(...incidents.map(i => i.ms));
-        issues.push({ id: `slow-${tag}`, component: tag, filePath: _tagToFilePath(tag), issueType: 'slow-render', severity: maxMs > 1000 ? 'high' : 'medium',
+        const iss = { id: `slow-${tag}`, component: tag, filePath: _tagToFilePath(tag), issueType: 'slow-render', severity: maxMs > 1000 ? 'high' : 'medium',
             details: `${incidents.length} render(s) exceeded 500ms. Max: ${maxMs}ms.`,
             callStacks: incidents.map(i => i.stack).filter(Boolean),
-            recommendation: 'Move heavy computation out of render() into updated() or a property setter. Consider lazy loading heavy children.' });
+            recommendation: 'Move heavy computation out of render() into updated() or a property setter. Consider lazy loading heavy children.',
+            observed: { incidentCount: incidents.length, maxMs } };
+        iss.evidenceLevel = _computeEvidenceLevel(iss, report);
+        issues.push(iss);
     });
 
     // High-avg TTI
@@ -246,31 +293,46 @@ function _buildPinpointIssues(report) {
         if (bySlowTag[tag] || d.count < 2) return;
         const avg = Math.round(d.totalMs / d.count);
         if (avg > 200) {
-            issues.push({ id: `avg-${tag}`, component: tag, filePath: _tagToFilePath(tag), issueType: 'high-avg-tti', severity: avg > 500 ? 'high' : 'medium',
+            const iss = { id: `avg-${tag}`, component: tag, filePath: _tagToFilePath(tag), issueType: 'high-avg-tti', severity: avg > 500 ? 'high' : 'medium',
                 details: `Avg TTI: ${avg}ms over ${d.count} renders. Max: ${Math.round(d.maxMs)}ms.`,
                 callStacks: [],
-                recommendation: 'Profile with Chrome DevTools. Enable prop-audit (window.__LDS_PROP_DEBUG__ = "<tag>") to see which properties trigger updates.' });
+                recommendation: 'Profile with Chrome DevTools. Enable prop-audit (window.__LDS_PROP_DEBUG__ = "<tag>") to see which properties trigger updates.',
+                observed: { avgMs: avg, renderCount: d.count, maxMs: Math.round(d.maxMs) } };
+            iss.evidenceLevel = _computeEvidenceLevel(iss, report);
+            issues.push(iss);
         }
     });
 
-    // Memory leaks
+    // Memory leaks — Phase 7: slope-based detection preferred over single-snapshot
     Object.entries(report.memory || {}).forEach(([tag, v]) => {
         const active = (v.mounted || 0) - (v.unmounted || 0);
-        if (active > 3 && (v.gcCount || 0) < active * 0.5) {
-            issues.push({ id: `leak-${tag}`, component: tag, filePath: _tagToFilePath(tag), issueType: 'memory-leak', severity: 'high',
-                details: `Mounted: ${v.mounted} | Unmounted: ${v.unmounted} | Active: ${active} | GC freed: ${v.gcCount || 0}.`,
-                callStacks: [],
-                recommendation: 'Check disconnectedCallback: remove all addEventListener(), clearTimeout/clearInterval, cancel event bus subscriptions. Verify no parent stores element references in arrays that outlive navigation.' });
-        }
+        const isProgressive = _isProgressiveLeakFromReport(tag, report.mountCycles);
+        const singleSnapshot = active > 3 && (v.gcCount || 0) < active * 0.5;
+        if (!isProgressive && !singleSnapshot) return;
+        const leakType = isProgressive ? 'progressive-leak' : 'mount-storm';
+        const completedCycles = (report.mountCycles || []).filter(c => c.endTs).length;
+        const observed = { mounted: v.mounted || 0, unmounted: v.unmounted || 0, active, gcCount: v.gcCount || 0, leakType };
+        const iss = { id: `leak-${tag}`, component: tag, filePath: _tagToFilePath(tag), issueType: 'memory-leak', severity: 'high',
+            details: isProgressive
+                ? `<${tag}> active count grew across ${completedCycles} session cycles. Progressive leak (leakType: progressive-leak). Active: ${active} | GC freed: ${v.gcCount || 0}.`
+                : `Mounted: ${v.mounted} | Unmounted: ${v.unmounted} | Active: ${active} | GC freed: ${v.gcCount || 0}. (Single-session spike — verify across multiple navigations.)`,
+            callStacks: [],
+            recommendation: 'Check disconnectedCallback: remove all addEventListener(), clearTimeout/clearInterval, cancel event bus subscriptions. Verify no parent stores element references in arrays that outlive navigation.',
+            observed };
+        iss.evidenceLevel = _computeEvidenceLevel(iss, report);
+        issues.push(iss);
     });
 
     // Failed network calls
     const failedReqs = (report.network || []).filter(n => n.isError);
     if (failedReqs.length > 0) {
-        issues.push({ id: 'network-errors', component: '(network)', filePath: '', issueType: 'network-error', severity: 'high',
+        const iss = { id: 'network-errors', component: '(network)', filePath: '', issueType: 'network-error', severity: 'high',
             details: failedReqs.map(n => `${n.method} ${n.url} → ${n.status || 'ERR'} (${n.durationMs}ms)`).join('\n'),
             callStacks: [],
-            recommendation: 'Check auth tokens, CORS headers, and API availability. 401 → re-login; 403 → permission issue; 5xx → backend problem.' });
+            recommendation: 'Check auth tokens, CORS headers, and API availability. 401 → re-login; 403 → permission issue; 5xx → backend problem.',
+            observed: { failedCount: failedReqs.length, statuses: [...new Set(failedReqs.map(n => n.status || 'ERR'))] } };
+        iss.evidenceLevel = _computeEvidenceLevel(iss, report);
+        issues.push(iss);
     }
 
     // Property thrash
@@ -282,20 +344,26 @@ function _buildPinpointIssues(report) {
     Object.entries(byThrashTag).forEach(([tag, incidents]) => {
         const props    = [...new Set(incidents.map(i => i.prop))];
         const maxCount = Math.max(...incidents.map(i => i.count));
-        issues.push({ id: `thrash-${tag}`, component: tag, filePath: _tagToFilePath(tag), issueType: 'property-thrash', severity: 'high',
+        const iss = { id: `thrash-${tag}`, component: tag, filePath: _tagToFilePath(tag), issueType: 'property-thrash', severity: 'high',
             details: `Property thrash on <${tag}>:\n${incidents.slice(0, 5).map(i => `  .${i.prop} — set ${i.count}× in ${i.windowMs}ms`).join('\n')}\nAffected props: ${props.join(', ')}`,
             callStacks: incidents.map(i => i.stack).filter(Boolean),
-            recommendation: 'A property is being set >5× per second — likely a new object/array literal passed on every parent render. Move the value outside the render function or use a stable reference.' });
+            recommendation: 'A property is being set >5× per second — likely a new object/array literal passed on every parent render. Move the value outside the render function or use a stable reference.',
+            observed: { props, maxSetCount: maxCount } };
+        iss.evidenceLevel = _computeEvidenceLevel(iss, report);
+        issues.push(iss);
     });
 
     // Circular updates
     (report.cycles || []).forEach((c, idx) => {
         const tags    = c.path.split(' → ');
         const rootTag = tags[0] || '(unknown)';
-        issues.push({ id: `cycle-${idx}`, component: rootTag, filePath: _tagToFilePath(rootTag), issueType: 'circular-update', severity: 'critical',
+        const iss = { id: `cycle-${idx}`, component: rootTag, filePath: _tagToFilePath(rootTag), issueType: 'circular-update', severity: 'critical',
             details: `Circular update chain detected (${c.count}×):\n  ${c.path}${c.prop ? `\n  Triggered on prop: .${c.prop}` : ''}`,
             callStacks: c.stack ? [c.stack] : [],
-            recommendation: 'An element\'s updated() or setter is setting a property on a component that eventually sets a property back on it. Break the cycle: use a guard (if this._updating return), memoize values, or restructure data flow so updates are unidirectional.' });
+            recommendation: 'An element\'s updated() or setter is setting a property on a component that eventually sets a property back on it. Break the cycle: use a guard (if this._updating return), memoize values, or restructure data flow so updates are unidirectional.',
+            observed: { path: c.path, cycleCount: c.count, triggerProp: c.prop || null } };
+        iss.evidenceLevel = _computeEvidenceLevel(iss, report);
+        issues.push(iss);
     });
 
     const order = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -643,6 +711,12 @@ class LdsDebugPanel extends LitElement {
             .issue-header:hover { background:#1e1e35; }
             .issue-sev { border-radius:3px; padding:2px 6px; font-size:10px; font-weight:bold; flex-shrink:0; margin-top:1px; }
             .issue-sev.critical { background:#f38ba8; color:#1e1e2e; } .issue-sev.high { background:#fab387; color:#1e1e2e; } .issue-sev.medium { background:#f9e2af; color:#1e1e2e; }
+            .evidence-badge { border-radius:3px; padding:2px 6px; font-size:9px; font-weight:bold; flex-shrink:0; margin-top:1px; letter-spacing:0.3px; opacity:0.9; }
+            .evl-observation { background:#313244; color:#9399b2; }
+            .evl-correlation { background:#2d2f45; color:#89b4fa; }
+            .evl-attribution { background:#1a2b1a; color:#a6e3a1; }
+            .evl-lifetime-violation { background:#2d1a1a; color:#f38ba8; }
+            .evl-causality-confirmed { background:#1a2b20; color:#94e2d5; }
             .issue-info { flex:1; min-width:0; }
             .issue-component { color:#89b4fa; font-weight:bold; }
             .issue-type { color:#6c7086; font-size:10px; margin-left:6px; }
@@ -802,13 +876,26 @@ class LdsDebugPanel extends LitElement {
                 ? `Read ${i.filePath} lines ${Math.max(1, lineNumber - 10)} to ${lineNumber + 10} for context`
                 : `Read ${i.filePath}`;
 
-            const claudePrompt = [
+            const promptText = [
                 `Fix a ${i.severity} ${i.issueType} issue in <${i.component}>.`,
                 `File: ${i.filePath}${lineNumber ? ` (around line ${lineNumber})` : ''}.`,
                 i.details.split('\n')[0],
                 `Recommendation: ${i.recommendation}`,
                 related.length ? `Related components (via events): ${related.join(', ')}.` : '',
             ].filter(Boolean).join(' ');
+
+            const evidenceCapsule = {
+                problem:        i.issueType,
+                component:      i.component,
+                file:           i.filePath,
+                line:           lineNumber,
+                evidenceLevel:  i.evidenceLevel || 'observation',
+                observed:       i.observed || {},
+                callStack:      filteredStack ? filteredStack.split('\n').slice(0, 6) : [],
+                recommendation: i.recommendation,
+                relatedComponents: related,
+                claudePrompt:   promptText,
+            };
 
             return {
                 id:                i.id,
@@ -821,7 +908,7 @@ class LdsDebugPanel extends LitElement {
                 lineNumber,
                 readHint,
                 relatedComponents: related,
-                claudePrompt,
+                evidenceCapsule,
                 filteredCallStack: filteredStack,
                 callStack:         rawStack,
                 reportedAt:        r.reportTime,
@@ -977,6 +1064,7 @@ class LdsDebugPanel extends LitElement {
             <div class="issue-card">
                 <div class="issue-header" @click=${()=>{ this._expandedIssue = expanded ? null : issue.id; }}>
                     <span class="issue-sev ${issue.severity}">${issue.severity.toUpperCase()}</span>
+                    ${issue.evidenceLevel ? html`<span class="evidence-badge evl-${issue.evidenceLevel}" title="Evidence level: ${issue.evidenceLevel}">${issue.evidenceLevel}</span>` : ''}
                     <div class="issue-info">
                         <span class="issue-component">&lt;${issue.component}&gt;</span>
                         <span class="issue-type">${issue.issueType}</span>

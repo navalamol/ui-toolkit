@@ -1,8 +1,8 @@
 # lit-debug-suite — Session Handover
 
-**Date:** 2026-09-18  
-**Status:** COMPLETE — implementation + build configs + extension bug fixed + full docs  
-**What remains:** npm install + build + place icon PNGs + browser-test panel (see §1, §5)
+**Date:** 2026-10-06  
+**Status:** Phase 7 complete — Evidence Quality Upgrade implemented  
+**What remains:** npm install + build + place icon PNGs + browser-test (see §1, §5); Phase 8 next
 
 ---
 
@@ -187,6 +187,313 @@ window.__LDS_CONTEXT_GETTER__ = (el) => ({
 window.__LDS_TAG_TO_FILE__ = (tag) => `src/elements/${tag}/${tag}.js`;
 ```
 Without this, paths default to `src/components/${tag}/${tag}.js`.
+
+---
+
+---
+
+## Wiring lit-debug-suite into ui-platform-elements (full guide)
+
+This section covers the exact changes needed to replace the embedded `ruf-*.js` tools in
+`ui-platform-elements/src/base/` with imports from `lit-debug-suite`.
+
+---
+
+### Step 0 — Add the dependency
+
+In `ui-platform-elements/package.json`, add a local path dep (until published to npm):
+```json
+"dependencies": {
+  "lit-debug-suite": "file:../../perf-tool/lit"
+}
+```
+Then `npm install`.
+
+---
+
+### Step 1 — ruf-element.js (the core change)
+
+The old file imports each tool individually and has its own `_getDebugFlag` / `_toolEnabled` logic.
+Replace the entire debug-tool block with `LitDebugMixin` composition.
+
+**Lines to REMOVE from the top of ruf-element.js:**
+```js
+// DELETE these imports:
+import * as RufPerf          from './ruf-perf.js';
+import * as RufPropAudit     from './ruf-prop-audit.js';
+import * as RufErrorBoundary from './ruf-error-boundary.js';
+import * as RufCycleDetector from './ruf-cycle-detector.js';
+import * as RufMemory        from './ruf-memory.js';
+import * as RufNetwork       from './ruf-network.js';
+import * as RufVitals        from './ruf-vitals.js';
+import * as RufConsole       from './ruf-console.js';
+import * as RufInspector     from './ruf-inspector.js';
+import * as RufAciTracer     from './ruf-aci-tracer.js';
+import * as RufSlowApi       from './ruf-slow-api.js';
+```
+
+**Lines to ADD at the top:**
+```js
+import { LitDebugMixin } from 'lit-debug-suite';
+import 'lit-debug-suite/custom/ui-platform'; // Falcor + DataObjectManager + ACI + compat aliases
+```
+
+**Class definition change** — compose the mixin into the chain:
+
+Old:
+```js
+let RufElement = (superclass) => class extends superclass {
+```
+
+New:
+```js
+let RufElement = (superclass) => class extends LitDebugMixin(superclass) {
+```
+
+That single change wires all 12 tools. `LitDebugMixin.connectedCallback` runs before
+`RufElement`'s own `connectedCallback` body (via `super.connectedCallback()`), which is correct.
+
+**Remove `_getDebugFlag()` and `_toolEnabled()` methods** — they are now in `lit-debug-suite`'s
+`src/core/gate.js`. Delete these two methods entirely from `ruf-element.js`.
+
+**Remove the individual attach/detach calls** — in `connectedCallback` and
+`disconnectedCallback`, delete all lines like:
+```js
+// DELETE all of these:
+if (this._toolEnabled('perf'))          RufPerf.attach(this);
+if (this._toolEnabled('propAudit'))     RufPropAudit.attach(this);
+if (this._toolEnabled('errorBoundary')) RufErrorBoundary.attach(this);
+// ... and all similar attach() calls
+
+// DELETE in disconnectedCallback:
+RufPerf.detach(this);
+RufPropAudit.detach(this);
+// ... and all similar detach() calls
+```
+
+**Bridge the globalSettings flag** — the old code read `mainApp.globalSettings.rufDebugEnabled`
+to activate debug. The new `gate.js` reads `window.__LDS_DEBUG__` or
+`window.__LDS_APP_CONFIG__?.debugEnabled`. Add this bridge at the top of `connectedCallback`,
+before `super.connectedCallback()`:
+
+```js
+connectedCallback() {
+  // Bridge Syndigo tenant config → generic flag (run once per page load)
+  if (!window.__LDS_DEBUG__ && !window.__LDS_BRIDGE_DONE__) {
+    window.__LDS_BRIDGE_DONE__ = true;
+    const mainApp = OSElements.mainApp;
+    if (mainApp?.globalSettings?.rufDebugEnabled) {
+      window.__LDS_DEBUG__ = mainApp.globalSettings.rufDebugEnabled;
+    }
+  }
+  super.connectedCallback(); // LitDebugMixin runs here
+  // ... rest of existing RufElement connectedCallback unchanged
+}
+```
+
+**Set the file-path and context hooks** — still in `connectedCallback`, after the bridge:
+```js
+// Tell the panel how to map tag names to source file paths (Syndigo convention)
+if (!window.__LDS_TAG_TO_FILE__) {
+  window.__LDS_TAG_TO_FILE__ = (tag) => `src/elements/${tag}/${tag}.js`;
+}
+// Tell the inspector which properties to show in context snapshot
+if (!window.__LDS_CONTEXT_GETTER__) {
+  window.__LDS_CONTEXT_GETTER__ = (el) => ({
+    tenantId:      el.tenantId,
+    userId:        el.userId,
+    roles:         el.roles,
+    defaultRole:   el.defaultRole,
+    appId:         el.appId,
+    contextData:   el.contextData,
+    ownershipData: el.ownershipData,
+  });
+}
+```
+
+---
+
+### Step 2 — app-base.js (crash endpoint + ACI global patch)
+
+If the app uses `rufCrashEndpoint` (auto-POST on crash), set the generic equivalent:
+```js
+// In app-base.js or main-app.js, after globalSettings is available:
+if (this.globalSettings?.rufCrashEndpoint) {
+  window.__LDS_CRASH_ENDPOINT__  = this.globalSettings.rufCrashEndpoint;
+  window.__LDS_CRASH_AUTO_POST__ = this.globalSettings.rufCrashAutoPost ?? false;
+}
+```
+
+For global ACI patching (captures dispatches from elements that don't go through `el.aci`):
+```js
+// If you have a global aci instance available in app context:
+import { installGlobalAciPatch } from 'lit-debug-suite/custom/ui-platform';
+// call once after aci is initialised:
+installGlobalAciPatch(window.__aci__ ?? aci);
+```
+
+---
+
+### Step 3 — app-main.js / app-main-v2.js (the debug panel)
+
+The panel tag changes from `<ruf-debug-panel>` to `<lds-debug-panel>`.
+
+**app-main.js (Polymer):**
+```html
+<!-- Old: -->
+<ruf-debug-panel hidden$="[[!globalSettings.rufDebugEnabled]]"></ruf-debug-panel>
+
+<!-- New: (import once at top of file, then) -->
+<lds-debug-panel hidden$="[[!globalSettings.rufDebugEnabled]]"></lds-debug-panel>
+```
+Add to JS imports:
+```js
+import 'lit-debug-suite/panel'; // registers <lds-debug-panel>
+```
+
+**app-main-v2.js (Lit):**
+```js
+import 'lit-debug-suite/panel';
+
+// In render():
+// Old: ${this.globalSettings?.rufDebugEnabled ? html`<ruf-debug-panel></ruf-debug-panel>` : ''}
+// New:
+${this.globalSettings?.rufDebugEnabled ? html`<lds-debug-panel></lds-debug-panel>` : ''}
+```
+
+---
+
+### Step 4 — What to do with the old ruf-*.js files
+
+After the above changes are wired and tested, the following files in `src/base/` are **redundant**
+and can be deleted:
+
+| Old file | Replaced by |
+|----------|-------------|
+| `ruf-perf.js` | `lit-debug-suite/src/core/perf.js` |
+| `ruf-prop-audit.js` | `lit-debug-suite/src/core/prop-audit.js` |
+| `ruf-error-boundary.js` | `lit-debug-suite/src/core/error-boundary.js` |
+| `ruf-cycle-detector.js` | `lit-debug-suite/src/core/cycle-detector.js` |
+| `ruf-memory.js` | `lit-debug-suite/src/core/memory.js` |
+| `ruf-vitals.js` | `lit-debug-suite/src/core/vitals.js` |
+| `ruf-console.js` | `lit-debug-suite/src/core/console.js` |
+| `ruf-network.js` | `lit-debug-suite/src/core/network.js` + `custom/ui-platform/FalcorDecoder.js` |
+| `ruf-aci-tracer.js` | `lit-debug-suite/custom/ui-platform/AciPlugin.js` |
+| `ruf-slow-api.js` | `lit-debug-suite/custom/ui-platform/SyndigoSlowApiPlugin.js` |
+| `ruf-inspector.js` | `lit-debug-suite/src/core/inspector.js` |
+| `ruf-debug-panel.js` | `lit-debug-suite/src/panel/LdsDebugPanel.js` |
+
+**Keep** `ruf-element.js` — it is the Syndigo base element and has logic beyond just debug tools.
+
+**Compat layer** — `custom/ui-platform/index.js` already imports `compat.js` which aliases all
+`__LDS_*` globals back to `__RUF_*` names. So any existing support tooling, saved reports, or
+bookmarked console commands that reference `window.__RUF_PERF__` etc. will still work during the
+transition period.
+
+---
+
+### Step 5 — Test the integration
+
+1. `window.__LDS_DEBUG__ = true` in the browser console
+2. The `<lds-debug-panel>` badge (🐞) should appear in the page corner
+3. Click it → panel opens with all 12 tabs
+4. **Verify Falcor** — open the Network tab, make any API call → `decoded` column shows protocol/domain/operation
+5. **Verify ACI** — open the Events tab, trigger any ACI action → appears in timeline
+6. **Verify file paths** — open Pinpoint → issue cards show `src/elements/<tag>/<tag>.js:line`
+7. **Verify compat** — in console: `window.__RUF_PERF__` should return same object as `window.__LDS_PERF__`
+
+---
+
+### Summary of changes to ruf-element.js (diff shape)
+
+```diff
+ // ruf-element.js
+-import * as RufPerf          from './ruf-perf.js';
+-import * as RufPropAudit     from './ruf-prop-audit.js';
+-import * as RufErrorBoundary from './ruf-error-boundary.js';
+-import * as RufCycleDetector from './ruf-cycle-detector.js';
+-import * as RufMemory        from './ruf-memory.js';
+-import * as RufNetwork       from './ruf-network.js';
+-import * as RufVitals        from './ruf-vitals.js';
+-import * as RufConsole       from './ruf-console.js';
+-import * as RufInspector     from './ruf-inspector.js';
+-import * as RufAciTracer     from './ruf-aci-tracer.js';
+-import * as RufSlowApi       from './ruf-slow-api.js';
++import { LitDebugMixin } from 'lit-debug-suite';
++import 'lit-debug-suite/custom/ui-platform';
+
+-let RufElement = (superclass) => class extends superclass {
++let RufElement = (superclass) => class extends LitDebugMixin(superclass) {
+
+   connectedCallback() {
++    // Bridge tenant config → generic LDS flag (once per page)
++    if (!window.__LDS_DEBUG__ && !window.__LDS_BRIDGE_DONE__) {
++      window.__LDS_BRIDGE_DONE__ = true;
++      if (OSElements.mainApp?.globalSettings?.rufDebugEnabled) {
++        window.__LDS_DEBUG__ = OSElements.mainApp.globalSettings.rufDebugEnabled;
++      }
++    }
++    // Set Syndigo-specific hooks for panel (once per page)
++    window.__LDS_TAG_TO_FILE__     ??= (tag) => `src/elements/${tag}/${tag}.js`;
++    window.__LDS_CONTEXT_GETTER__  ??= (el)  => ({ tenantId: el.tenantId, userId: el.userId, roles: el.roles, defaultRole: el.defaultRole, appId: el.appId, contextData: el.contextData, ownershipData: el.ownershipData });
+     super.connectedCallback();
+-    if (this._toolEnabled('perf'))          RufPerf.attach(this);
+-    if (this._toolEnabled('propAudit'))     RufPropAudit.attach(this);
+-    if (this._toolEnabled('errorBoundary')) RufErrorBoundary.attach(this);
+-    if (this._toolEnabled('cycleDetector')) RufCycleDetector.attach(this);
+-    if (this._toolEnabled('memory'))        RufMemory.attach(this);
+-    if (this._toolEnabled('network'))       RufNetwork.init();
+-    if (this._toolEnabled('vitals'))        RufVitals.init();
+-    if (this._toolEnabled('console'))       RufConsole.init();
+-    if (this._toolEnabled('inspector'))     RufInspector.attach(this);
+     // ... rest unchanged
+   }
+
+   disconnectedCallback() {
+     super.disconnectedCallback();
+-    RufPerf.detach(this);
+-    RufPropAudit.detach(this);
+-    RufErrorBoundary.detach(this);
+-    RufCycleDetector.detach(this);
+-    RufMemory.detach(this);
+-    RufInspector.detach(this);
+     // ... rest unchanged
+   }
+
+-  _getDebugFlag() { ... }    // DELETE
+-  _toolEnabled(key) { ... }  // DELETE
+```
+
+---
+
+## Session 2026-10-06 — Phase 7: Evidence Quality Upgrade
+
+### What was done
+
+**`src/core/memory.js`**
+- Added session-cycle tracking: `_mountCycles`, `_currentMountCycle`, `_cycleSeq`
+- `_startNewMountCycle()` fires on module init and on every `visibilitychange → visible` event
+- `_mountCycleRecord(tag, field)` called from `attach()` and `detach()` — records per-tag mount/unmount counts within each cycle
+- Exposed `window.__LDS_MOUNT_CYCLES__` for debugging and report capture
+- `__LDS_MEMORY_RESET__` now also clears cycles and starts a fresh cycle
+
+**`src/panel/LdsDebugPanel.js`**
+- `_collectReport()` now includes `mountCycles: window.__LDS_MOUNT_CYCLES__[...]` snapshot
+- `_isProgressiveLeakFromReport(tag, mountCycles)` — returns true if active count grew monotonically across ≥3 completed cycles
+- `_computeEvidenceLevel(issue, report)` — maps issueType + signal richness to five-level ladder: `observation | correlation | attribution | lifetime-violation | causality-confirmed`
+- All 8 `issues.push()` sites in `_buildPinpointIssues` now add `evidenceLevel` and `observed` data
+- Memory leak detection upgraded: `progressive-leak` (multi-cycle) → `correlation`; `mount-storm` (single snapshot) → `observation`
+- `_exportFixTable`: `claudePrompt` string replaced by structured `evidenceCapsule` object `{ problem, component, file, line, evidenceLevel, observed, callStack, recommendation, relatedComponents, claudePrompt }`
+- Pinpoint issue cards show an `evidence-badge` chip next to the severity badge, colour-coded by level
+- CSS added for `.evidence-badge` and `.evl-*` classes
+
+### Key design decisions
+- `window.__LDS_MOUNT_CYCLES__` vs `window.__LDS_CYCLES__`: the existing `__LDS_CYCLES__` is the circular-update detector (directed graph DFS). Mount cycles are stored separately as `__LDS_MOUNT_CYCLES__`.
+- Progressive leak requires all completed cycles to show growth (not just majority) to keep false-positive rate low. A page that is visited 3 times and each time leaves more active instances is a strong signal.
+- `evidenceCapsule.claudePrompt` is kept as a string inside the capsule for backwards compatibility with scripts that read the fix table.
+
+### Phase 7 kill test (to run)
+Run on 5 real bugs. If evidence levels don't reduce Claude's false-fix rate vs Phase 6 Fix Table, revert to the simpler format.
 
 ---
 
