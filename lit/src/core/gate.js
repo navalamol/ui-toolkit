@@ -21,8 +21,8 @@
  *   window.__LDS_CYCLE_DETECT__        = true
  *   window.__LDS_RESOURCE_TRACKER__   = true   // Phase 9 resource lifetime model
  *   window.__LDS_WORKFLOW_BASELINE__  = true   // Phase 10 workflow baseline tracking
- *   window.__LDS_FALCOR_VIEW__        = true   // Phase 11 Falcor network toolkit tab
- */
+ *  window.__LDS_FALCOR_VIEW__        = true   // Phase 11 Falcor network toolkit tab
+   */
 
 function _getDebugFlag() {
     if (typeof window === 'undefined') return false;

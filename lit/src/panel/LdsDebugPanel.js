@@ -1646,6 +1646,16 @@ class LdsDebugPanel extends LitElement {
         }
 
         // ── helpers ──────────────────────────────────────────────────────
+        const finalizeBurst = (g) => {
+            const dis = new Set(); const ets = new Set(); let totalMs = 0;
+            for (const c of g.calls) {
+                if (c.decoded?.dataIndex) dis.add(c.decoded.dataIndex);
+                (c.decoded?.entityTypes || []).forEach(t => ets.add(t));
+                totalMs += c.durationMs || 0;
+            }
+            return { calls: g.calls, totalMs, dataIndexes: [...dis], entityTypes: [...ets] };
+        };
+
         const getBurstGroups = (log) => {
             const BURST = 200;
             const sorted = log.slice().sort((a, b) => {
@@ -1658,14 +1668,14 @@ class LdsDebugPanel extends LitElement {
             for (const e of sorted) {
                 const ms = e.ts ? new Date(e.ts).getTime() : 0;
                 if (!cur || ms - cur._last > BURST) {
-                    if (cur) groups.push(cur);
+                    if (cur) groups.push(finalizeBurst(cur));
                     cur = { calls: [e], _last: ms };
                 } else {
                     cur.calls.push(e);
                     cur._last = ms;
                 }
             }
-            if (cur) groups.push(cur);
+            if (cur) groups.push(finalizeBurst(cur));
             return groups.reverse();
         };
 

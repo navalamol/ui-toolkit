@@ -221,8 +221,10 @@ function _buildOperation(falcorInfo) {
 function decodeFalcor(rawUrl, body) {
     if (!rawUrl) return null;
 
-    // Only attempt on model.json paths
-    const isFalcorUrl = rawUrl.includes('/model.json') || rawUrl.includes('falcor');
+    // Match standard Falcor model.json URLs and Syndigo's /data/*.json endpoints
+    const isFalcorUrl = rawUrl.includes('/model.json')
+        || rawUrl.includes('falcor')
+        || /\/data\/[^/?#]+\.json/.test(rawUrl);
     if (!isFalcorUrl) return null;
 
     let falcorInfo = null;
