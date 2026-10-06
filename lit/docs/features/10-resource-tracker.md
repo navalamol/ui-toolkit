@@ -4,6 +4,10 @@
 **Panel tab:** None dedicated — findings appear in Pinpoint  
 **Data globals:** `window.__LDS_RESOURCE_VIOLATIONS__`, `window.__LDS_RESOURCE_VIOLATIONS_RESET__()`
 
+> **No panel tab.** Resource Tracker findings appear in the **Pinpoint tab** as `lifetime-violation` cards.
+>
+> **Critical workflow note:** Violations are only detected when an element **disconnects** (`disconnectedCallback`). You must navigate *away* from the page (or close a modal/dialog) to trigger detection. Opening the panel immediately after enabling the flag and seeing nothing does not mean there are no leaks — it means the elements haven't disconnected yet.
+
 ---
 
 ## What it is
@@ -214,6 +218,74 @@ this.addEventListener('click', (e) => this._handleClick(e));
 - **Finds what DevTools can't easily show.** Global listeners on `window`/`document` are invisible in the Elements panel's Event Listeners tree. The Resource Tracker surfaces them with component attribution.
 - **Evidence level `lifetime-violation` = always fix.** No need to investigate further or gather more evidence. When you see this in Pinpoint, the recommendation is the fix.
 - **Export includes the violation.** Fix Table export carries the event types and target for each violation, so Claude Code gets the exact removeEventListener calls to add.
+
+---
+
+## What you'll see
+
+**In the browser console** — when elements disconnect with unreleased listeners:
+
+```
+[LdsMemory] lifetime-violation: <rock-grid> (instance #3) disconnected with 2 unreleased resource(s)
+  resize on window
+  click on self
+Details: window.__LDS_RESOURCE_VIOLATIONS__
+```
+
+**In the Pinpoint tab** — a `lifetime-violation` card (red — highest confidence):
+
+```
+[HIGH] resource-outlived-owner                     lifetime-violation
+rock-grid (instance #3)
+2 unreleased listeners: resize (window), click (self)
+→ "Add removeEventListener in disconnectedCallback for: resize (on window), click (on self)"
+```
+
+- Evidence level `lifetime-violation` is always red — this is a definite leak, not a hypothesis
+- The recommendation already contains the exact fix — add `removeEventListener` in `disconnectedCallback`
+- The fix is deterministic: the recommendation names the event type and target exactly
+
+---
+
+## Reading the results
+
+| What you see | What it means |
+|---|---|
+| `target: "window"` | Most dangerous — a global listener accumulates on every navigation |
+| `target: "document"` | Same concern as window |
+| `target: "self"` | Lower urgency — element will be GC'd eventually, but still a clean-code issue |
+| Multiple violations for the same component tag | Same pattern repeating across instances — one fix covers all |
+| No violations but you expect leaks | Either there are no leaks (good!), or you haven't navigated away yet (trigger disconnect first) |
+
+---
+
+## Step-by-step: I suspect event listeners are leaking
+
+1. `window.__LDS_RESOURCE_TRACKER__ = true` → **reload** (must be set before elements mount)
+2. Navigate to the suspect page — elements mount and listeners are registered
+3. **Navigate away** from the page (or close the modal/dialog) — this triggers `disconnectedCallback`
+4. Check the browser console for `[LdsMemory] lifetime-violation:` messages
+5. Open panel → **Pinpoint tab** → look for red `lifetime-violation` cards
+6. For each violation: the recommendation tells you exactly which `removeEventListener` to add
+7. To see the call site: `window.__LDS_RESOURCE_VIOLATIONS__[0].resources[0].stack` — shows where `addEventListener` was called
+8. Apply the fix → reload → repeat steps 2–4 → `window.__LDS_RESOURCE_VIOLATIONS__.length === 0` confirms it's fixed
+
+---
+
+## Sanity check
+
+```js
+// Confirm the tracker is running:
+Array.isArray(window.__LDS_RESOURCE_VIOLATIONS__)  // true → tracker active
+// undefined → flag was set after elements mounted → reload
+
+// Check for any violations:
+window.__LDS_RESOURCE_VIOLATIONS__.length
+// 0 after navigating away = no leaks detected (or tool not yet triggered)
+
+// See violation details:
+window.__LDS_RESOURCE_VIOLATIONS__[0]?.resources?.map(r => `${r.type} on ${r.target}`)
+```
 
 ---
 

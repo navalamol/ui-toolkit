@@ -166,6 +166,83 @@ The divergence thresholds (+50% for warn, +200% for alert) are generous enough t
 
 ---
 
+## What you'll see in the Summary tab
+
+The Workflow Baseline section is in the **Summary tab**, collapsible:
+
+```
+▼ Workflow Baseline                                  ⚠ 1 alert
+
+  Baseline captured: Oct 6, 12:00
+
+  ⚠  rock-grid renders: 174   baseline: 12   +1350%   ← alert (red)
+  ✓  product-tile renders: 50  baseline: 48   OK       ← fine (green)
+  ⚠  rock-grid mounts: 3      baseline: 1    +200%    ← warn (amber)
+
+  [📏 Set as baseline]   [Clear baseline]   [Update baseline]
+```
+
+- Red `⚠` = alert (+200% or more over baseline)
+- Amber `⚠` = warn (+50–199% over baseline)
+- Green `✓` = OK (within threshold)
+- The section header shows a badge count of active alerts
+
+**When no baseline is stored:**
+```
+▼ Workflow Baseline
+  No baseline stored for this page.
+  [📏 Set as baseline]
+```
+
+---
+
+## Reading the results
+
+| What you see | What it means |
+|---|---|
+| Alert on render count (+200%) | A regression introduced more renders — investigate with Perf tab and Prop Audit |
+| Warn on mount count (+100%) | An element is mounting twice as often — may be a route change or component re-creation pattern |
+| Network failure warning | New network errors appeared that weren't in the baseline |
+| All OK but page feels slower | The baseline may be outdated — check Perf tab for absolute numbers |
+| No divergences shown | Either no regression, or baseline was set after a session that was already anomalous |
+
+---
+
+## Step-by-step: detecting a regression across sessions
+
+**Setting the baseline (do once on a healthy session):**
+1. Go through a typical workflow on the page (open filters, scroll, view a few items)
+2. Open panel → **Summary tab** → scroll to "Workflow Baseline" section
+3. Click **📏 Set as baseline** — the current session's render and mount counts are stored
+4. Session ends
+
+**Detecting a regression (subsequent sessions):**
+1. Open the same page → use the app normally
+2. Open panel → **Summary tab** → Workflow Baseline section
+3. Red/amber rows = regressions — the named components are rendering more than when you set the baseline
+4. Navigate to Perf tab to see the absolute render counts; navigate to Pinpoint for `excessive-renders` findings
+
+**After fixing a regression:**
+1. Verify the fix reduced render counts (Perf tab)
+2. Click **Update baseline** to store the new healthy numbers
+
+---
+
+## Sanity check
+
+```js
+// Check if a baseline exists for this page:
+Object.keys(localStorage).filter(k => k.startsWith('__lds_workflow'))
+// ['__lds_workflow_baseline_%2Fproducts'] → baseline exists for /products
+// [] → no baseline stored
+
+// Read the stored baseline:
+JSON.parse(localStorage.getItem('__lds_workflow_baseline_' + encodeURIComponent(location.pathname)))
+// null → no baseline for this pathname
+```
+
+---
+
 ## Complete example
 
 ```js

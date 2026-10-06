@@ -4,6 +4,8 @@
 **Panel tab:** None dedicated — output goes to browser console + Pinpoint tab  
 **Data globals:** `window.__LDS_RENDER_REASONS__`, `window.__LDS_THRASH__`
 
+> **No panel tab.** Prop Audit has no dedicated tab. Results appear in two places: (1) the **browser console** as grouped logs while you interact with the target component, and (2) the **Pinpoint tab** if thrash is detected. Keep DevTools console open alongside the panel to use this tool effectively.
+
 ---
 
 ## What it is
@@ -175,6 +177,72 @@ Thrash incidents from `window.__LDS_THRASH__` feed a Pinpoint finding:
 - **No "why did this render?" mystery.** The console log tells you exactly which prop changed, with old/new values and a stack trace, without adding any code.
 - **Catches same-reference bugs.** `sameRef: true` in the output immediately reveals the pattern where `this.items = this.items` triggers an unnecessary render because `requestUpdate` was called explicitly.
 - **Thrash finds the noisy prop.** In a component receiving data from multiple sources, R2-B identifies which specific prop is being written from too many places.
+
+---
+
+## What you'll see
+
+**In the browser console** — every time the target component updates, a grouped log appears:
+
+```
+▶ [LdsPropAudit] <rock-grid> — 2 prop(s) changed
+    data     before: Array[0]  after: Array[48]
+    loading  before: "true"    after: "false"
+  update triggered by   (click to expand stack trace)
+```
+
+- `before` / `after` summaries tell you what changed
+- `(same ref ⚠️)` next to a value means the same object/array reference was passed — a re-render for no actual data change
+- The stack trace (expand the `update triggered by` line) shows exactly which line of your code set the property
+
+**In the Pinpoint tab** — a `prop-thrash` card appears if any property was written more than 5 times in 1000ms on the target component.
+
+---
+
+## Reading the results
+
+| What you see | What it means |
+|---|---|
+| A prop logs on every interaction | Expected — that prop is the trigger for this render |
+| Same prop logs repeatedly with identical values | Upstream code is writing the prop unnecessarily |
+| `(same ref ⚠️)` on an array/object | Mutation pattern bug — the array/object was mutated instead of replaced |
+| `window.__LDS_THRASH__` has entries | A prop is being written from multiple places simultaneously |
+| Console logs appear with no user interaction | The component is being driven by a timer or external event |
+
+---
+
+## Step-by-step: a component re-renders too often
+
+1. `window.__LDS_PROP_DEBUG__ = 'your-component-tag'` (no reload needed)
+2. Interact with the feature that causes excessive renders
+3. Watch the console — each grouped log = one render. The stack trace shows who triggered it
+4. If the same prop shows `(same ref ⚠️)` repeatedly: mutation bug → fix: use `this.items = [...this.items, newItem]` instead of `this.items.push(newItem)`
+5. Check `window.__LDS_THRASH__` — if entries exist, the named prop is being written from multiple places in the same 1000ms window
+6. Open Pinpoint → look for `prop-thrash` or `same-ref-update` findings → export for Claude Code
+
+## Step-by-step: I see jank but don't know which prop is causing it
+
+1. `window.__LDS_PROP_DEBUG__ = '*'` — targets all components (noisy — narrow down quickly)
+2. Interact with the feature causing jank
+3. In the console, scan for which component logs appear most frequently
+4. Switch to `window.__LDS_PROP_DEBUG__ = 'that-component'` and repeat
+5. Look for a prop that appears in every render group — that's your culprit
+
+---
+
+## Sanity check
+
+```js
+// Confirm the tool is active — interact with the target component.
+// If no console logs appear: the element was already mounted before the flag was set.
+// Trigger a remount by navigating away and back, or:
+window.__LDS_PROP_DEBUG__ = false;
+window.__LDS_PROP_DEBUG__ = 'rock-grid';
+// then navigate to the page fresh
+
+// Check thrash directly:
+window.__LDS_THRASH__   // [] means no thrash detected
+```
 
 ---
 

@@ -4,6 +4,8 @@
 **Panel tab:** None — output goes to clipboard + console  
 **Data globals:** `window.createComponentWithData()`
 
+> **No panel tab.** The Inspector has no dedicated tab. Output is written to the **clipboard** (and mirrored to the browser console). Paste the clipboard contents into a text editor or directly into Claude Code after capturing.
+
 ---
 
 ## What it is
@@ -189,6 +191,64 @@ Every snapshot also prints a grouped console log:
 - **No rebuild needed to see component state.** Hover, click, paste — the full state is in the clipboard in under two seconds.
 - **Replay hint** tells you exactly how to recreate the component in isolation, including which object props to set programmatically (can't be set as HTML attributes) and which private state to restore to skip API calls in a test.
 - **Pair with Pinpoint.** When Pinpoint surfaces `<rock-grid>` as a problem, capture a snapshot to understand what state it was in when the issue occurred. Paste both the snapshot and the Fix Table entry to Claude Code.
+
+---
+
+## What you'll see
+
+When `__LDS_INSPECTOR__ = true`, hovering over any tracked component shows a small button at its top-right corner:
+
+```
+┌─────────────────────────────────────┐
+│                        📸 rock-grid │  ← click this
+│   (component content)               │
+└─────────────────────────────────────┘
+```
+
+Clicking it:
+1. Copies full snapshot JSON to clipboard (silent — no modal or popup)
+2. Prints a grouped log to the console:
+
+```
+▶ [LdsInspector] <rock-grid>
+    Input Props     { productId: "PRD-123", data: [...], loading: false }
+    Private State   { _selectedRows: [1,4,7], _sortColumn: "name" }
+    Context         { storeState: {...} }
+    Replay HTML     "<rock-grid productId="PRD-123"></rock-grid>"
+    Mock Setup      "el.data = snapshot.inputProps['data']; ..."
+```
+
+Paste the clipboard JSON into Claude Code, a test fixture, or a bug report to share the exact component state at the time of the issue.
+
+---
+
+## Step-by-step: understanding what a component's state is right now
+
+1. `window.__LDS_INSPECTOR__ = true` (no reload needed — toggle anytime)
+2. Hover over the component on the page → a `📸 <tag-name>` button appears at its top-right
+3. Click the button — clipboard is updated, console group expands
+4. Paste clipboard contents into your editor to see `inputProps` (what the parent passed in) and `privateState` (what the component accumulated internally)
+5. Use `replayHint.html` to recreate the component in a test — it includes the exact attribute values
+6. Use `replayHint.mockSetup` to set object/array props programmatically (can't be set as HTML attributes)
+
+**When the button doesn't appear:** The element doesn't use `LitDebugMixin`. Capture programmatically instead:
+```js
+window.createComponentWithData('rock-grid')
+```
+
+---
+
+## Sanity check
+
+```js
+// Test capture without hovering:
+const snap = window.createComponentWithData('rock-grid');
+snap.inputProps    // all declared Lit properties with live values
+snap.privateState  // all own properties starting with _
+
+// If snap is undefined: 'rock-grid' is not in the DOM, or LitDebugMixin is not installed
+document.querySelector('rock-grid')  // null → not on this page
+```
 
 ---
 

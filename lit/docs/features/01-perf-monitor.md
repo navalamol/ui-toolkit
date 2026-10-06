@@ -198,6 +198,68 @@ updated() {
 
 ---
 
+## What you'll see in the Perf tab
+
+The Perf tab shows a table sorted by average render time, slowest first:
+
+```
+┌─────────────────┬─────────┬────────┬────────┬────────┐
+│ tag             │ renders │ avg ms │ max ms │ min ms │
+├─────────────────┼─────────┼────────┼────────┼────────┤
+│ rock-grid       │ 47      │ 397    │ 1243   │ 82     │  ← highlighted (> 300ms)
+│ product-filter  │ 12      │ 143    │ 310    │ 88     │
+│ product-tile    │ 192     │ 42     │ 184    │ 28     │  ← fine
+└─────────────────┴─────────┴────────┴────────┴────────┘
+```
+
+- Rows where avg ms > 300ms are highlighted
+- A 🔥 badge appears on rows with a matching stack trace in `__LDS_SLOW_RENDERS__` — Pinpoint will show a file + line for these
+
+If the table is empty after a page load: the flag was set after elements mounted. Reload.
+
+---
+
+## Reading the numbers
+
+| avg ms range | What it means |
+|---|---|
+| < 100ms | Fast — no action needed |
+| 100–300ms | Acceptable on most devices — watch but don't act |
+| > 300ms | Investigate — Pinpoint will flag this |
+| > 500ms | Slow render warning captured; stack trace available in Pinpoint |
+
+**renders count context:**
+- A count of 1 is a single data point (possibly cold-start JIT) — navigate to the page again before drawing conclusions
+- A count unexpectedly high (e.g., 200 for a component that should mount once) indicates excessive re-renders — switch to [Prop Audit](02-prop-audit.md)
+
+**Numbers are machine-specific.** A 200ms result on a dev MacBook may be 800ms on a low-end device. Use DevTools CPU throttling (4× slowdown) when measuring for production-realistic numbers.
+
+---
+
+## Step-by-step: my page loads slowly
+
+1. In DevTools console: `window.__LDS_PERF_ENABLED__ = true`
+2. **Reload the page** — the flag must be set before elements mount
+3. Navigate through the page normally — let everything render, open a modal, scroll
+4. Click 🐞 → **Perf tab** — top row is your bottleneck
+5. If avg ms > 500 and there's a 🔥 badge: open **Pinpoint tab** → find the `slow-render` card → copy the `readHint` value (file + line) and paste it to Claude Code
+6. If renders count is unexpectedly high: the component is re-rendering excessively → switch to `__LDS_PROP_DEBUG__ = 'that-tag'` to find what's triggering the extra renders
+
+---
+
+## Sanity check
+
+```js
+// Confirm the tool is collecting data:
+Object.keys(window.__LDS_PERF__)
+// [] → flag was set after mount, or LitDebugMixin not installed → reload
+
+// Quick sorted report in console:
+window.__LDS_PERF_REPORT__()
+```
+
+---
+
 ## Complete example
 
 ```js

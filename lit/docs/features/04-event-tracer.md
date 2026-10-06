@@ -163,6 +163,75 @@ LdsEventTracer.recordEvent('debug/test', { foo: 'bar' })
 
 ---
 
+## What you'll see in the Events tab
+
+The Events tab shows the timeline table (most recent first by default):
+
+```
+┌───┬──────────────┬────────────────────┬──────────────┬────────────────┐
+│ # │ elapsed ms   │ event              │ from         │ detail         │
+├───┼──────────────┼────────────────────┼──────────────┼────────────────┤
+│ 1 │ 1240         │ product/select     │ product-tile │ {"id":"PRD-1"} │
+│ 2 │ 1241         │ cart/add           │ rock-grid    │ {"qty":1}      │
+│ 3 │ 1242         │ analytics/track    │ rock-grid    │ {"event":"add"}│
+│ 4 │ 1310         │ analytics/track    │ rock-grid    │ {"event":"add"}│ ← duplicate?
+└───┴──────────────┴────────────────────┴──────────────┴────────────────┘
+```
+
+- **seq** (`#`) — the absolute order of dispatch; if this resets to 1, the tracer was cleared
+- **elapsed ms** — time since tracer init; use this to spot deferred events
+- **from** — heuristic: which component file dispatched the event (may be wrong for utility modules)
+- **detail** — truncated to 120 chars; for the full payload: `window.__LDS_EVENTS_TIMELINE__[n].detail`
+
+The **Events tab** also has a frequency table below the timeline, showing which event names appear most and from which components.
+
+---
+
+## Reading the results
+
+| What you see | What it means |
+|---|---|
+| Same event name repeating many times | Possible event storm — check the frequency table for `🔥 HIGH` |
+| Very close elapsed timestamps (1–2ms apart) | Events firing synchronously in the same tick — a chain reaction |
+| Large elapsed gap before an event | Something is deferring that dispatch (setTimeout, async await) |
+| `from: null` | The event was dispatched from a utility module or async context |
+| Duplicate entries with same detail | One user action is dispatching the event multiple times |
+
+---
+
+## Step-by-step: I don't know what's happening during this interaction
+
+1. Wire your event bus (one-time setup — see "How to enable" above)
+2. `window.__LDS_EVENTS_TRACE__ = true` (no reload needed)
+3. Perform the interaction you want to trace
+4. Open panel → **Events tab** — read the sequence top to bottom
+5. Look for unexpected event names, duplicates, or large elapsed gaps
+6. `window.__LDS_EVENTS_FREQ_REPORT__()` — shows which events fire most; `🔥 HIGH` means > 20 dispatches
+
+## Step-by-step: an event is firing too many times
+
+1. `window.__LDS_EVENTS_FREQ_REPORT__()` — identify the high-count event name
+2. `window.__LDS_EVENTS_FILTER__ = 'event-name'` — filter the timeline to just that event
+3. `window.__LDS_EVENTS_REPORT__()` — see every dispatch: elapsed times reveal if it's batched or spread out
+4. Check the `from` field — is the same component dispatching it repeatedly?
+5. Filter to that component: `window.__LDS_PROP_DEBUG__ = 'that-component'` to see what's triggering its renders
+
+---
+
+## Sanity check
+
+```js
+// Confirm the bus is wired and recording:
+LdsEventTracer.recordEvent('debug/test', { test: true });
+window.__LDS_EVENTS_TIMELINE__.slice(-1)
+// Should show your test event. If not: flag not set, or bus not wired.
+
+// Check frequency table:
+window.__LDS_EVENTS_FREQ__   // {} means no events recorded yet
+```
+
+---
+
 ## Complete example
 
 ```js

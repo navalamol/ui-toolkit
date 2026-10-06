@@ -71,6 +71,25 @@ Summary · Pinpoint · Vitals · Network · Perf · Errors · Console · Events 
 - **Import** — loads a previously exported report (great for async sharing)
 - **Export Fix Table** (Pinpoint tab) — structured JSON array with `evidenceCapsule` per finding
 
+### Panel tab → tool mapping
+
+| Tab | Fed by | Notes |
+|-----|--------|-------|
+| Summary | All tools | Health score, stat chips, Workflow Baseline section |
+| Pinpoint | Perf, PropAudit, CycleDetector, ResourceTracker, Memory | Aggregated findings — start here |
+| Vitals | vitals.js | LCP, CLS, INP, Long Tasks |
+| Network | network.js | fetch + XHR log |
+| Perf | perf.js | TTI per component |
+| Errors | LdsErrorBoundary | Structured crash reports |
+| Console | console.js | `console.error` / `console.warn` ring buffer |
+| Events | event-tracer.js | Custom event bus timeline + frequency |
+| SlowAPI | slow-api.js | API method timing |
+| Memory | memory.js | Mount/unmount/active/GC counts |
+| History | — | Export / Import session reports |
+| Env | — | Snapshot of all `window.__LDS_*` globals |
+
+> **Tools without a dedicated tab:** Prop Audit (02), Component Inspector (03), Cycle Detector (09), and Resource Tracker (10) write to the **Pinpoint tab** and/or the browser console. See each tool's doc for where to find their output.
+
 ---
 
 ## The Fix Table and evidenceCapsule
@@ -137,17 +156,24 @@ Each element that uses `LitDebugMixin` is tracked through:
 
 ---
 
-## Feature docs index
+## Getting started
+
+- [Quick Start](00b-quick-start.md) — from zero to first insight in 5 minutes
+- [Tool by Symptom](13-tool-by-symptom.md) — know the problem, not the tool? Start here
+- [Pinpoint Tab Guide](00c-pinpoint-tab.md) — how findings work, evidence levels, Fix Table export
+- [Troubleshooting](14-troubleshooting.md) — nothing showing? Common causes and fixes
+
+## Feature docs
 
 - [01 — Performance Monitor](01-perf-monitor.md) `__LDS_PERF_ENABLED__`
-- [02 — Prop Audit](02-prop-audit.md) `__LDS_PROP_DEBUG__`
-- [03 — Component Inspector](03-inspector.md) `__LDS_INSPECTOR__`
+- [02 — Prop Audit](02-prop-audit.md) `__LDS_PROP_DEBUG__` *(no panel tab — console + Pinpoint)*
+- [03 — Component Inspector](03-inspector.md) `__LDS_INSPECTOR__` *(no panel tab — clipboard)*
 - [04 — Event Tracer](04-event-tracer.md) `__LDS_EVENTS_TRACE__`
 - [05 — Slow API Monitor](05-slow-api.md) `__LDS_SLOW_API__`
 - [06 — Console Capture](06-console.md) `__LDS_CONSOLE_ENABLED__`
 - [07 — Web Vitals](07-vitals.md) `__LDS_VITALS_ENABLED__`
 - [08 — Network Monitor](08-network.md) `__LDS_NETWORK_ENABLED__`
-- [09 — Cycle Detector](09-cycle-detector.md) `__LDS_CYCLE_DETECT__`
-- [10 — Resource Tracker](10-resource-tracker.md) `__LDS_RESOURCE_TRACKER__`
+- [09 — Cycle Detector](09-cycle-detector.md) `__LDS_CYCLE_DETECT__` *(no panel tab — Pinpoint)*
+- [10 — Resource Tracker](10-resource-tracker.md) `__LDS_RESOURCE_TRACKER__` *(no panel tab — Pinpoint)*
 - [11 — Workflow Baseline](11-workflow-baseline.md) `__LDS_WORKFLOW_BASELINE__`
 - [12 — Memory Counters](12-memory-counters.md) *(always on)*

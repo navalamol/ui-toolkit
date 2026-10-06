@@ -147,6 +147,66 @@ The panel's Reports → Download JSON also includes the Console buffer in the fu
 
 ---
 
+## What you'll see in the Console tab
+
+The Console tab shows captured messages in reverse-chronological order (newest first):
+
+```
+[10:15:01] ERROR  Uncaught promise rejection: fetch failed
+[10:14:33] WARN   [LdsMemory] lifetime-violation: <rock-grid> (instance #3)...
+[10:14:32] ERROR  TypeError: Cannot read properties of undefined (reading 'id')
+```
+
+Controls:
+- **Level filter** — All / Error / Warn — use "Error" to see only errors
+- **Search** — filter by message text substring
+- **Copy** — copies the filtered list as JSON
+
+Note: `console.log` calls are **not** captured — only `console.error` and `console.warn`.
+
+---
+
+## Reading the results
+
+| What you see | What it means |
+|---|---|
+| Errors from `[LdsMemory]` / `[LdsPerfMonitor]` | Internal tool warnings — these are signals, not bugs in your app |
+| TypeError / Cannot read property errors | Real runtime errors — cross-reference with the component on screen when it happened |
+| A flood of framework deprecation warnings | Third-party noise — use `window.__LDS_CONSOLE_IGNORE__` (future feature) or filter by search |
+| Messages visible in console but not in panel | They happened before the flag was set — reload with the flag active |
+
+---
+
+## Step-by-step: I need to capture console errors from a specific user workflow
+
+1. `window.__LDS_CONSOLE_ENABLED__ = true` → **reload the page** (to capture errors from early initialization)
+2. Execute the workflow that triggers the errors
+3. Open panel → **Console tab** → filter to "Error"
+4. If you need to share: panel → **Download JSON** → the `console` section of the report includes the full buffer
+
+## Step-by-step: getting a user's console errors remotely
+
+1. Ask the user to paste `window.__LDS_CONSOLE_ENABLED__ = true` in their DevTools console
+2. They reload and reproduce the issue
+3. They click panel → **Download JSON** and send you the file
+4. You open panel → **Import** → read their `console` section
+
+---
+
+## Sanity check
+
+```js
+// Confirm the buffer is active and capturing:
+window.__LDS_CONSOLE__.length   // 0 after page interaction → flag set after errors occurred → reload
+
+// Force a test capture:
+console.error('test error');
+window.__LDS_CONSOLE__.slice(-1)
+// Should show: [{ level: "error", message: "test error", ts: "..." }]
+```
+
+---
+
 ## Complete example
 
 ```js

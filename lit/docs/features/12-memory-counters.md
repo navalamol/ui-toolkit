@@ -71,6 +71,39 @@ window.__LDS_MOUNT_CYCLES__
 
 ---
 
+## Reading the numbers
+
+| What you see | What it means |
+|---|---|
+| `active: 1` for a page-level component | Normal — it's a singleton that's supposed to be alive |
+| `active: 0` after navigating away | Clean — the component disconnected and unmounted correctly |
+| `active` growing across multiple navigations | Leak — instances are not being unmounted on navigation |
+| `active: 48` for `product-tile` on a products page | Normal — 48 list items in the page |
+| Storm on `product-tile` count: 200 | The list is re-creating elements from scratch instead of updating in place |
+| `gcCount` low or 0 | GC hasn't run yet — not evidence of a leak; check `active` count instead |
+
+**The active count alone is not conclusive.** `active: 5` after loading a page with 5 instances of a component is expected. Active count becomes a leak signal when it grows across repeated navigations to and from the same page.
+
+---
+
+## Step-by-step: I think elements aren't being cleaned up
+
+1. Open panel → **Memory tab** (no flag needed)
+2. Navigate to the suspect page — note active counts
+3. Navigate away — active counts for that page's components should drop toward 0
+4. Navigate back → note active counts again
+5. Repeat 3–4 twice more — if active count grows with each navigation cycle, that's a progressive leak
+6. `window.__LDS_MEMORY_REPORT__()` in the console — sorted by active count descending
+7. For the leaking component: enable [Resource Tracker](10-resource-tracker.md) to find the specific listeners not being cleaned up
+
+## Step-by-step: a component is mounting hundreds of times
+
+1. Open Memory tab — check the storm incidents section
+2. `window.__LDS_STORMS__` — the stack trace on each storm entry shows where the mass mounting started
+3. Check if the component is inside a frequently-updating parent: enable `__LDS_PROP_DEBUG__ = 'parent-component'` and watch for the parent re-rendering its full child list
+
+---
+
 ## Console commands
 
 ```js
@@ -83,9 +116,45 @@ window.__LDS_MEMORY_RESET__()
 
 ---
 
-## Panel: Memory tab
+## What you'll see in the Memory tab
 
-Shows a table of all tracked tags with mounted / unmounted / active / GC counts. Active count > 3 is highlighted as potentially leaked. Storm incidents appear below the table.
+The Memory tab shows a table of all tracked components:
+
+```
+┌─────────────────┬─────────┬───────────┬────────┬────┐
+│ tag             │ mounted │ unmounted │ active │ GC │
+├─────────────────┼─────────┼───────────┼────────┼────┤
+│ rock-grid       │ 47      │ 46        │ 1      │ 44 │
+│ product-tile    │ 192     │ 192       │ 0      │ 190│
+│ nav-header      │ 1       │ 0         │ 1      │ 0  │ ← expected (singleton)
+│ search-dialog   │ 8       │ 5         │ 3      │ 4  │ ← highlighted (active > 3)
+└─────────────────┴─────────┴───────────┴────────┴────┘
+
+Storm incidents:
+  product-tile — 200 mounts in this session
+```
+
+- Rows where `active > 3` are highlighted amber — may indicate leaked instances
+- `active = mounted - unmounted` — the number of instances currently alive
+- Storm incidents appear below the table when any tag exceeds 20 mounts in the session
+
+No flag needed — this tab is always populated when `LitDebugMixin` is installed.
+
+---
+
+## Sanity check
+
+```js
+// Confirm tracking is active (always on — should always work):
+window.__LDS_MEMORY__ instanceof Map   // true → counters are running
+window.__LDS_MEMORY__.size             // 0 → no tracked elements mounted yet
+
+// Quick report sorted by active:
+window.__LDS_MEMORY_REPORT__()
+
+// Check for storms:
+window.__LDS_STORMS__   // [] means no storms detected this session
+```
 
 ---
 

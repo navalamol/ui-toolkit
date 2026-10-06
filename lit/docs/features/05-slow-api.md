@@ -152,6 +152,70 @@ window.__LDS_SLOW_API_LOG__
 
 ---
 
+## What you'll see
+
+**On the page itself** — an orange badge appears directly on the component that triggered a slow call:
+
+```
+┌─────────────────────────────────────┐
+│  ⏱ 1823ms                           │  ← badge overlaid on the component
+│   (component content)               │
+└─────────────────────────────────────┘
+```
+
+The badge auto-removes after 8 seconds. If you miss it: check the console for `[LdsSlowApi] rock-grid — 1823ms — product/filters`.
+
+**In the SlowAPI tab** — a table of all calls that exceeded the threshold:
+
+```
+┌──────────────┬───────┬────────┬──────────────┬──────────────────┐
+│ ts           │ ms    │ method │ component    │ operation        │
+├──────────────┼───────┼────────┼──────────────┼──────────────────┤
+│ 10:14:32.110 │ 1823  │ get    │ rock-grid    │ product/filters  │
+└──────────────┴───────┴────────┴──────────────┴──────────────────┘
+```
+
+---
+
+## Reading the results
+
+| What you see | What it means |
+|---|---|
+| `tag: null` in a log entry | The API call happened after `connectedCallback` — attribution is unavailable for async calls |
+| High ms on `operation: "unknown"` | The operation extractor couldn't parse the request shape — inspect `window.__LDS_SLOW_API_LOG__[n].request` directly |
+| Same method slow every time | The API itself is slow for this query — backend investigation needed |
+| Same component slow every time | That component's data requirements are too heavy — consider pagination or caching |
+| Threshold is too noisy (everything flags) | Lower the signal-to-noise by raising the threshold: `window.__LDS_SLOW_API_MS__ = 3000` |
+
+---
+
+## Step-by-step: a component feels slow after initial load — identifying the API call
+
+1. Wire your API object (one-time — see "How to enable" above)
+2. `window.__LDS_SLOW_API__ = true` and optionally `window.__LDS_SLOW_API_MS__ = 800` (tighter threshold)
+3. Navigate to the slow page — watch for the orange badge
+4. Click panel → **SlowAPI tab** — full log with method, component, operation, and timing
+5. For the slow entry: `window.__LDS_SLOW_API_LOG__[0].request` → see what was requested; `window.__LDS_SLOW_API_LOG__[0].response` → see what came back
+6. If the response is very large: combine with [Network Monitor](08-network.md) to confirm size
+
+---
+
+## Sanity check
+
+```js
+// Confirm the API object is wrapped:
+window.__dataObjectManager__?.get?.__ldsSlowApiWrapped  // true → wrapped
+
+// Check the log directly:
+window.__LDS_SLOW_API_LOG__   // [] means no slow calls detected yet
+// Trigger a slow call manually by lowering the threshold:
+window.__LDS_SLOW_API_MS__ = 1;   // everything will flag now
+// Interact with the page → check the log → raise the threshold back
+window.__LDS_SLOW_API_MS__ = 2000;
+```
+
+---
+
 ## Complete example
 
 ```js

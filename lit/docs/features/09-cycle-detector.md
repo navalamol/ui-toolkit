@@ -4,6 +4,8 @@
 **Panel tab:** None dedicated — findings appear in Pinpoint  
 **Data globals:** `window.__LDS_CYCLES__`
 
+> **No panel tab.** Cycle Detector findings appear in the **Pinpoint tab** as `circular-update` cards. If the page is genuinely hanging from a render loop, open the panel and check Pinpoint — the cycle path is there.
+
 ---
 
 ## What it is
@@ -154,6 +156,71 @@ The `path` string appears as the issue details. The `stack` from the first detec
 - **Answers "is there a render loop?" definitively.** No more manually instrumenting `performUpdate` to count calls. The cycle path string tells you exactly which components form the loop.
 - **Catches multi-hop cycles.** A → B → C → A is just as visible as A → A. DevTools doesn't surface this; the Cycle Detector does.
 - **Count tells you severity.** `count: 47` after a single user interaction = render loop that ran 47 times. `count: 1` = cycle that fired once and self-resolved (less urgent).
+
+---
+
+## What you'll see
+
+**In the browser console** — when a cycle fires, a warning appears immediately:
+
+```
+[LdsCycleDetector] Cycle detected: rock-grid → product-tile → rock-grid (count: 47)
+```
+
+**In the Pinpoint tab** — a `circular-update` card:
+
+```
+[HIGH] circular-update                                attribution
+rock-grid
+rock-grid → product-tile → rock-grid (count: 47)
+product-tile.js line 92
+→ "Remove or gate the cross-component property write at product-tile.js:92"
+```
+
+- `path` shows the full cycle chain as a human-readable string
+- `count` tells you how many times the cycle ran (47 = render loop, 1 = fired once and stopped)
+- File + line from the stack trace shows exactly where the last link in the cycle was triggered
+
+---
+
+## Reading the results
+
+| What you see | What it means |
+|---|---|
+| `count: 1` | Cycle fired once and self-resolved — lower urgency, but still investigate |
+| `count: 47` (high) | Active render loop — the page ran 47 extra renders from one user action |
+| Long path (A→B→C→D→A) | Multi-hop cycle — harder to find manually; the path string tells you all the components involved |
+| Cycle reported but page seems fine | May be a false positive from accumulated graph edges — see Reliability section |
+
+---
+
+## Step-by-step: the page hangs / browser freezes on interaction
+
+1. `window.__LDS_CYCLE_DETECT__ = true` → reload
+2. Perform the interaction that causes the hang
+3. Check console immediately for `[LdsCycleDetector] Cycle detected:` messages
+4. Open panel → **Pinpoint tab** → find the `circular-update` card
+5. Read `window.__LDS_CYCLES__[0].stack` — the stack trace shows the exact line that triggers the final link in the cycle
+6. That line is setting a property on another component from inside a render — add a guard: `if (this.value !== newValue) { parent.value = newValue; }`
+
+---
+
+## Sanity check
+
+```js
+// Confirm the tool is active:
+Array.isArray(window.__LDS_CYCLES__)  // true → detector is running
+
+// Quick cycle check:
+window.__LDS_CYCLES_REPORT__()
+// [LdsCycleDetector] No cycles detected ✓   ← good
+// or
+// rock-grid → product-tile → rock-grid, count: 47   ← investigate
+
+// After fixing, verify:
+window.__LDS_CYCLES__ = [];   // clear the report
+// Reproduce the interaction → check again
+```
 
 ---
 

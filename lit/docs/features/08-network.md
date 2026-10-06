@@ -148,6 +148,70 @@ In practice, `responseSizeKB` is `null` or 0 for most modern API responses. It's
 
 ---
 
+## What you'll see in the Network tab
+
+The Network tab shows a filterable table of all captured requests:
+
+```
+Filter: [All ▼]  Search: _______________
+
+  URL                          method  status  duration  size
+  /api/products?page=1         GET     200     1823ms    48KB   ← amber (slow)
+  /api/recommendations         GET     404     82ms      —      ← red (error)
+  /static/chunk-8fa3.js        GET     200     45ms      220KB
+  /model.json                  POST    200     340ms     12KB
+```
+
+- Amber row = slow (`durationMs > 2000ms`)
+- Red row = error (`status >= 400` or `status === 0`)
+- Click a row to expand: full URL, decoded body (if decoder registered), response size
+
+The **Summary tab** shows a "Net errors" stat chip — click it to jump to the Network tab pre-filtered to errors.
+
+---
+
+## Reading the results
+
+| What you see | What it means |
+|---|---|
+| status: 0 + isError: true | Network failure — CORS error, offline, or request was aborted |
+| Duplicate URLs | A component is requesting the same data multiple times — missing cache or dedup logic |
+| Many requests in a short window | A request waterfall — some may be unintentionally sequential |
+| Large size but fast duration | Data is big but CDN is efficient — consider whether all of it is needed |
+| Slow but successful | Backend is the bottleneck — switch to Slow API Monitor if it's an API method call |
+
+---
+
+## Step-by-step: auditing what a page requests
+
+1. `window.__LDS_NETWORK_ENABLED__ = true` → **reload** (must be set before the first fetch/XHR)
+2. Navigate to the page and let it fully load
+3. Open panel → **Network tab** → start with "All" filter
+4. Scan for red rows (errors) — these are bugs
+5. Switch to "Slow" filter — anything > 2000ms that's user-blocking needs investigation
+6. Look for duplicate URLs — same URL appearing multiple times indicates a caching or dedup problem
+7. For the full log:
+   ```js
+   window.__LDS_NETWORK_LOG__
+     .filter(e => e.isError)
+     .map(e => `${e.method} ${e.url} → ${e.status}`)
+   ```
+
+---
+
+## Sanity check
+
+```js
+// Confirm requests are being captured:
+window.__LDS_NETWORK_LOG__.length
+// 0 after page load → flag was set after requests fired → reload
+
+// Check for any errors:
+window.__LDS_NETWORK_LOG__.filter(e => e.isError)
+```
+
+---
+
 ## Complete example
 
 ```js

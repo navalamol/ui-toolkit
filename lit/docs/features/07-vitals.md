@@ -165,6 +165,74 @@ LCP and CLS feed the page health score: `score -= 25/12` for poor/needs-improvem
 
 ---
 
+## What you'll see in the Vitals tab
+
+The Vitals tab shows four metric blocks with colour-coded status:
+
+```
+LCP   2340ms  ●  Needs improvement    (good: < 2500ms)
+CLS   0.012   ●  Good                 (good: < 0.1)
+INP   180ms   ●  Good                 (good: < 200ms)
+
+Long Tasks
+  823ms  at 10:00:02
+  124ms  at 10:14:32
+```
+
+The **Summary tab** also shows LCP, CLS, and INP as header chips next to the health score.
+
+Status thresholds:
+
+| Metric | Good | Needs improvement | Poor |
+|--------|------|------------------|------|
+| LCP | < 2500ms | 2500–4000ms | > 4000ms |
+| CLS | < 0.1 | 0.1–0.25 | > 0.25 |
+| INP | < 200ms | 200–500ms | > 500ms |
+
+---
+
+## Reading the results
+
+| What you see | What it means |
+|---|---|
+| LCP > 2500ms | The largest visible element took too long to appear — find the bottleneck with the Perf tab |
+| CLS > 0.1 | Layout is shifting visibly — something is loading asynchronously and pushing other elements |
+| INP > 200ms | An interaction (click, keypress) is blocked for too long — a Long Task during that interaction is the likely cause |
+| Long Task > 200ms at the same time as LCP | The render of the LCP element is blocking the main thread — check the Perf tab for which component |
+| Multiple Long Tasks spread through the session | The page has ongoing blocking work (heavy data processing, large renders) |
+
+---
+
+## Step-by-step: the page feels slow but DevTools shows no slow network calls
+
+1. `window.__LDS_VITALS_ENABLED__ = true` → reload
+2. Load the page and interact normally
+3. Open panel → **Vitals tab**
+4. Check LCP — if > 2500ms, the visible render is slow. Correlate with Perf tab: which component's max ms matches the LCP timestamp?
+5. Check Long Tasks — if there are tasks > 100ms: that's scripting blocking the thread. Their timestamps should correspond to slow renders in the Perf tab
+6. Cross-reference:
+   ```js
+   window.__LDS_VITALS__.longTasks[0].ts  // when the long task fired
+   // Compare with Perf tab — which component has a similar maxMs timing?
+   ```
+
+---
+
+## Sanity check
+
+```js
+// Confirm vitals are being collected:
+window.__LDS_VITALS__
+// { lcp: null, cls: { value: 0, entries: [] }, inp: null, longTasks: [] }
+// → tool initialized but no data yet — reload with the flag set and let the page fully load
+
+// LCP won't populate until the largest element is visible.
+// Trigger LCP by letting the above-fold content fully render.
+window.__LDS_VITALS__.lcp   // null → page hasn't rendered its LCP candidate yet
+```
+
+---
+
 ## Complete example
 
 ```js
