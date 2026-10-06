@@ -1,0 +1,2648 @@
+<title>lit-debug-suite</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+
+<style>
+:root {
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --sidebar-bg: #16192a;
+  --sidebar-fg: #8a96ae;
+  --sidebar-hover: #222742;
+  --sidebar-active-bg: #252c48;
+  --sidebar-active-fg: #e2e8f0;
+  --sidebar-group: #4a5568;
+  --fg: #1e2435;
+  --fg-muted: #6b7490;
+  --accent: #3eccc4;
+  --accent-dim: rgba(62,204,196,0.12);
+  --code-bg: #eef0f6;
+  --code-fg: #1e2435;
+  --border: #e4e7ef;
+  --table-head: #eef0f6;
+  --badge-warn: #f59e0b;
+  --badge-ok: #10b981;
+  --badge-err: #ef4444;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1220;
+    --surface: #181c2e;
+    --sidebar-bg: #0a0d18;
+    --sidebar-fg: #7a8899;
+    --sidebar-hover: #1c2138;
+    --sidebar-active-bg: #21284a;
+    --sidebar-active-fg: #dde3ef;
+    --sidebar-group: #4a5568;
+    --fg: #dde3ef;
+    --fg-muted: #7a8899;
+    --accent: #3eccc4;
+    --accent-dim: rgba(62,204,196,0.08);
+    --code-bg: #1c2138;
+    --code-fg: #dde3ef;
+    --border: #252c48;
+    --table-head: #1c2138;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1220;
+  --surface: #181c2e;
+  --sidebar-bg: #0a0d18;
+  --sidebar-fg: #7a8899;
+  --sidebar-hover: #1c2138;
+  --sidebar-active-bg: #21284a;
+  --sidebar-active-fg: #dde3ef;
+  --sidebar-group: #4a5568;
+  --fg: #dde3ef;
+  --fg-muted: #7a8899;
+  --accent: #3eccc4;
+  --accent-dim: rgba(62,204,196,0.08);
+  --code-bg: #1c2138;
+  --code-fg: #dde3ef;
+  --border: #252c48;
+  --table-head: #1c2138;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--fg);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── App Shell ── */
+.app { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Sidebar ── */
+.sidebar {
+  width: 248px;
+  min-width: 248px;
+  background: var(--sidebar-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid rgba(255,255,255,0.04);
+}
+.sidebar-header {
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+.sidebar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.sidebar-subtitle {
+  font-size: 11px;
+  color: var(--sidebar-fg);
+  margin-top: 2px;
+}
+.search-wrap {
+  padding: 10px 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.search-input {
+  width: 100%;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--sidebar-active-fg);
+  font-family: inherit;
+  outline: none;
+}
+.search-input::placeholder { color: var(--sidebar-fg); }
+.search-input:focus { border-color: var(--accent); }
+
+.nav { flex: 1; overflow-y: auto; padding: 8px 0 16px; }
+.nav::-webkit-scrollbar { width: 4px; }
+.nav::-webkit-scrollbar-track { background: transparent; }
+.nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+.nav-group { margin-top: 4px; }
+.nav-group-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--sidebar-group);
+  padding: 8px 16px 4px;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--sidebar-fg);
+  border-radius: 0;
+  transition: background 0.1s, color 0.1s;
+  user-select: none;
+}
+.nav-item:hover { background: var(--sidebar-hover); color: var(--sidebar-active-fg); }
+.nav-item.active {
+  background: var(--sidebar-active-bg);
+  color: var(--sidebar-active-fg);
+  border-left: 2px solid var(--accent);
+  padding-left: 14px;
+}
+.nav-item .flag {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--accent);
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100px;
+}
+.nav-item.hidden { display: none; }
+
+/* ── Main area ── */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.topbar-title { font-size: 14px; font-weight: 600; color: var(--fg); flex: 1; min-width: 0; }
+.topbar-title span { color: var(--fg-muted); font-weight: 400; }
+.theme-btn {
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-family: inherit;
+}
+.theme-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.content-wrap { flex: 1; overflow-y: auto; padding: 0; }
+.content-wrap::-webkit-scrollbar { width: 6px; }
+.content-wrap::-webkit-scrollbar-track { background: transparent; }
+.content-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.content {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 32px 40px 64px;
+}
+
+/* ── Markdown styles ── */
+.content h1 {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 8px;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+.content h2 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--fg);
+  margin: 36px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.content h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  margin: 24px 0 8px;
+}
+.content h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  margin: 20px 0 6px;
+}
+.content p { margin: 10px 0; color: var(--fg); }
+.content p:first-child { margin-top: 0; }
+.content a { color: var(--accent); text-decoration: none; }
+.content a:hover { text-decoration: underline; }
+
+.content blockquote {
+  margin: 16px 0;
+  padding: 12px 16px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-dim);
+  border-radius: 0 6px 6px 0;
+  color: var(--fg);
+}
+.content blockquote p { margin: 4px 0; }
+.content blockquote strong { color: var(--accent); }
+
+.content pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  overflow-x: auto;
+  margin: 14px 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.content pre::-webkit-scrollbar { height: 4px; }
+.content pre::-webkit-scrollbar-track { background: transparent; }
+.content pre::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.content code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  color: var(--code-fg);
+}
+.content pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: 12.5px;
+  display: block;
+}
+.content :not(pre) > code {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+}
+
+.content ul, .content ol { margin: 10px 0 10px 20px; }
+.content li { margin: 4px 0; }
+.content li > p { margin: 2px 0; }
+.content li > ul, .content li > ol { margin: 2px 0 2px 16px; }
+
+.content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 16px 0;
+}
+.content th {
+  background: var(--table-head);
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+.content td {
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  vertical-align: top;
+}
+.content tr:nth-child(even) td { background: rgba(0,0,0,0.02); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .content tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+}
+:root[data-theme="dark"] .content tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+
+.content hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 28px 0;
+}
+
+.content strong { font-weight: 600; }
+
+/* table overflow wrapper */
+.content table { min-width: 0; }
+.md-table-wrap { overflow-x: auto; margin: 16px 0; }
+.md-table-wrap table { margin: 0; }
+
+/* ── No-result / Empty ── */
+.empty-state {
+  padding: 60px 24px;
+  text-align: center;
+  color: var(--fg-muted);
+}
+.empty-state h3 { font-size: 16px; margin-bottom: 8px; }
+
+/* ── Mobile ── */
+@media (max-width: 700px) {
+  .app { flex-direction: column; }
+  .sidebar {
+    width: 100%;
+    min-width: 0;
+    max-height: 44px;
+    overflow: hidden;
+    transition: max-height 0.2s;
+    border-right: none;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .sidebar.open { max-height: 70vh; overflow-y: auto; }
+  .sidebar-header { cursor: pointer; display: flex; justify-content: space-between; align-items: center; max-height: 44px; }
+  .sidebar-header::after { content: '☰'; color: var(--sidebar-fg); font-size: 16px; }
+  .content { padding: 20px 16px 48px; }
+  .topbar { padding: 8px 16px; }
+}
+</style>
+
+<!-- doc content embedded as raw text blocks -->
+<script type="text/x-markdown" id="doc-overview">
+# lit-debug-suite — Feature Overview
+
+**Package:** `lit-debug-suite`
+**Type:** Zero-overhead runtime debug panel for LitElement apps
+**Installation:** Drop `<lds-debug-panel>` into your app shell. Add `LitDebugMixin` to your base element class.
+
+---
+
+## What this suite is
+
+`lit-debug-suite` is 12 independent diagnostic tools that all activate at runtime through `window` flags — no build step, no code changes to your components, zero overhead when off. Each tool collects data into a `window.__LDS_*` global. A floating 🐞 panel reads those globals and presents them in a 12-tab UI.
+
+You can use any combination of tools independently. Enabling one does not enable others.
+
+---
+
+## The master flag
+
+```js
+// All 12 tools at once
+window.__LDS_DEBUG__ = true;
+
+// Selective — only the tools you want
+window.__LDS_DEBUG__ = {
+  perf: true,
+  network: true,
+  resourceTracker: true,
+};
+
+// App-level config (read once at boot)
+window.__LDS_APP_CONFIG__ = { debugEnabled: true };
+```
+
+The master flag is checked by `gate.js`. Each per-tool standalone flag (below) works **without** the master flag — you can enable any single tool on its own.
+
+---
+
+## The 12 tools at a glance
+
+| # | Flag | Source file | What it does | Panel tab |
+|---|------|-------------|--------------|-----------|
+| 1 | `__LDS_PERF_ENABLED__` | `perf.js` | TTI (time-to-interactive) per component | Perf |
+| 2 | `__LDS_PROP_DEBUG__` | `prop-audit.js` | Render reasons + property thrash detection | — (console + Pinpoint) |
+| 3 | `__LDS_INSPECTOR__` | `inspector.js` | Hover badge → full component snapshot | — (clipboard) |
+| 4 | `__LDS_EVENTS_TRACE__` | `event-tracer.js` | Custom event bus timeline + frequency table | Events |
+| 5 | `__LDS_SLOW_API__` | `slow-api.js` | Slow API method detection + visual badge | SlowAPI |
+| 6 | `__LDS_CONSOLE_ENABLED__` | `console.js` | `console.error` / `console.warn` ring buffer | Console |
+| 7 | `__LDS_VITALS_ENABLED__` | `vitals.js` | LCP, CLS, INP, Long Tasks | Vitals |
+| 8 | `__LDS_NETWORK_ENABLED__` | `network.js` | fetch + XHR intercept; slow/large/error detection | Network |
+| 9 | `__LDS_CYCLE_DETECT__` | `cycle-detector.js` | Circular property-update chain detection | — (Pinpoint) |
+| 10 | `__LDS_RESOURCE_TRACKER__` | `memory.js` | Event listener lifetime — detects leaks on disconnect | — (Pinpoint) |
+| 11 | `__LDS_WORKFLOW_BASELINE__` | `LdsDebugPanel.js` | Workflow baseline — regression detection across sessions | Summary |
+| 12 | *(always on)* | `memory.js` | Mount/unmount counters, GC tracking, storm detection | Memory |
+
+> Tool 12 (memory counters) is always active when the mixin is installed. No flag required.
+
+### Syndigo extension: Falcor tab
+
+The **Falcor tab** is a Syndigo-specific extension (not part of the generic core). It reads from the same `__LDS_NETWORK_LOG__` as the Network tab but adds Falcor-specific decoding: path anatomy, burst grouping, dataIndex breakdown, duplicate detection, and search session linking.
+
+| Flag | Source | What it does | Panel tab |
+|------|--------|--------------|-----------|
+| `__LDS_FALCOR_VIEW__` (+ `__LDS_NETWORK_ENABLED__`) | `custom/ui-platform/FalcorDecoder.js` | Falcor call grouping, path anatomy, duplicate detection | **Falcor** |
+
+---
+
+## The panel
+
+The 🐞 badge appears in the bottom-right corner when `<lds-debug-panel>` is registered.
+Click it to open the slide-in panel with tabs:
+
+```
+Summary · Pinpoint · Vitals · Network · Falcor · Perf · Errors · Console · Events · SlowAPI · Memory · History · Env
+```
+
+**Key panel actions:**
+- **Refresh** — captures a fresh snapshot of all `window.__LDS_*` globals
+- **Download JSON** — exports the complete report as a file
+- **Import** — loads a previously exported report (great for async sharing)
+- **Export Fix Table** (Pinpoint tab) — structured JSON array with `evidenceCapsule` per finding
+
+### Panel tab → tool mapping
+
+| Tab | Fed by | Notes |
+|-----|--------|-------|
+| Summary | All tools | Health score, stat chips, Workflow Baseline section |
+| Pinpoint | Perf, PropAudit, CycleDetector, ResourceTracker, Memory | Aggregated findings — start here |
+| Vitals | vitals.js | LCP, CLS, INP, Long Tasks |
+| Network | network.js | fetch + XHR log |
+| Falcor | network.js + FalcorDecoder | Falcor-specific: burst groups, path anatomy, dataIndex breakdown, search sessions |
+| Perf | perf.js | TTI per component |
+| Errors | LdsErrorBoundary | Structured crash reports |
+| Console | console.js | `console.error` / `console.warn` ring buffer |
+| Events | event-tracer.js | Custom event bus timeline + frequency |
+| SlowAPI | slow-api.js | API method timing |
+| Memory | memory.js | Mount/unmount/active/GC counts |
+| History | — | Export / Import session reports |
+| Env | — | Snapshot of all `window.__LDS_*` globals |
+
+> **Tools without a dedicated tab:** Prop Audit (02), Component Inspector (03), Cycle Detector (09), and Resource Tracker (10) write to the **Pinpoint tab** and/or the browser console.
+
+---
+
+## Evidence levels (Phase 7)
+
+Every Pinpoint finding has an `evidenceLevel`:
+
+| Level | Meaning | Confidence |
+|-------|---------|------------|
+| `observation` | Something was measured; cause unknown | Low — investigate before acting |
+| `correlation` | Multiple signals point the same direction | Medium — strong enough to file a bug |
+| `attribution` | Source file + line confirmed from call stack | High — act on this directly |
+| `lifetime-violation` | Listener deterministically survived owner disconnect | Definite — always fix |
+| `causality-confirmed` | Phase 8 verification proved the fix worked | Proven |
+
+---
+
+## Memory and lifecycle
+
+Each element that uses `LitDebugMixin` is tracked through:
+- `connectedCallback` → all attach functions called (perf, propAudit, inspector, cycleDetector, slowApi, resourceTracker)
+- `disconnectedCallback` → resource tracker checks for unreleased listeners, all detach functions called
+- `FinalizationRegistry` → detects when a disconnected element is GC'd (increments `gcCount`)
+
+---
+
+## Getting started
+
+- [Quick Start](#quick-start) — from zero to first insight in 5 minutes
+- [Tool by Symptom](#tool-by-symptom) — know the problem, not the tool? Start here
+- [Pinpoint Tab Guide](#pinpoint-tab) — how findings work, evidence levels, Fix Table export
+- [Troubleshooting](#troubleshooting) — nothing showing? Common causes and fixes
+</script>
+
+<script type="text/x-markdown" id="doc-quick-start">
+# Quick Start — lit-debug-suite
+
+From zero to your first insight in under 5 minutes.
+
+---
+
+## Step 1 — Open DevTools console
+
+Open the page you want to investigate. Press `F12` → Console tab.
+
+---
+
+## Step 2 — Enable the tool you need
+
+Paste one of these into the console and press Enter:
+
+```js
+// Slow page load? Start here.
+window.__LDS_PERF_ENABLED__ = true;
+
+// Possible memory leak?
+window.__LDS_MEMORY_REPORT__()   // always on — no flag needed
+
+// Network requests failing or slow?
+window.__LDS_NETWORK_ENABLED__ = true;
+
+// Component re-rendering too much?
+window.__LDS_PROP_DEBUG__ = 'your-component-tag';
+
+// Event listener leak?
+window.__LDS_RESOURCE_TRACKER__ = true;
+
+// Everything at once (development only — higher overhead):
+window.__LDS_DEBUG__ = true;
+```
+
+> **Reload required for most tools.** Set the flag, then reload the page.
+
+---
+
+## Step 3 — Use the app normally
+
+Navigate to the problem area. Reproduce the behavior you're investigating.
+
+- For **Perf**: load the page, scroll, open a modal — let everything render
+- For **Network**: navigate to a page and let all requests complete
+- For **Resource Tracker**: navigate to the page, then navigate *away* (this triggers disconnect detection)
+- For **Prop Audit**: interact with the specific component causing re-renders — watch the console
+
+---
+
+## Step 4 — Open the panel
+
+Click the **🐞 badge** in the bottom-right corner of the page.
+
+```
+Summary · Pinpoint · Vitals · Network · Falcor · Perf · Errors · Console · Events · SlowAPI · Memory · History · Env
+```
+
+**Which tab to open first:**
+
+| You're investigating... | Go to... |
+|------------------------|----------|
+| Slow initial load | **Perf** tab |
+| Memory growing over time | **Memory** tab |
+| Network failures or slowness | **Network** tab |
+| Too many / slow Falcor calls | **Falcor** tab (requires `__LDS_NETWORK_ENABLED__`) |
+| Duplicate Falcor data fetches | **Falcor** tab → analytics footer for dup path count |
+| LCP / CLS / INP score | **Vitals** tab |
+| Console errors | **Console** tab |
+| Event bus behaviour | **Events** tab |
+| Slow API calls | **SlowAPI** tab |
+| Any kind of issue (aggregated) | **Pinpoint** tab |
+| Page regression vs last session | **Summary** tab → Workflow Baseline |
+
+> **Tools without a dedicated tab:** Prop Audit (02), Component Inspector (03), Cycle Detector (09), and Resource Tracker (10) have no panel tab — their findings appear in **Pinpoint**.
+
+---
+
+## Step 5 — Act on what you see
+
+**Panel → Pinpoint tab** is the main action surface. It aggregates findings from all active tools and shows:
+- What the problem is (finding type)
+- How confident the diagnosis is (evidence level)
+- What file and line to look at (`readHint`)
+- A ready-to-paste Claude Code prompt (`evidenceCapsule.claudePrompt`)
+
+Click **Export Fix Table** to download the structured JSON. Paste it — or the `claudePrompt` from a specific finding — into Claude Code to get a targeted fix.
+
+---
+
+## Enabling multiple tools at once
+
+```js
+// For Falcor investigation (Syndigo-specific):
+window.__LDS_NETWORK_ENABLED__ = true;   // captures XHR/fetch
+window.__LDS_FALCOR_VIEW__ = true;       // shows Falcor tab
+// reload → navigate to entity page → open 🐞 → Falcor tab
+
+// Selective master flag — enables only the named tools
+window.__LDS_DEBUG__ = {
+  perf:           true,
+  network:        true,
+  vitals:         true,
+  console:        true,
+};
+
+// Full master flag — all 12 tools (use with caution on complex pages)
+window.__LDS_DEBUG__ = true;
+```
+
+---
+
+## Sharing a debug session
+
+1. Open the panel → **Download JSON** — exports the full current report
+2. Send the file to a teammate
+3. They open the panel → **Import** — loads your session into their panel
+
+The report includes all active tool data: perf counters, network log, console buffer, vitals, memory counters, slow API log, and Fix Table findings.
+
+---
+
+## What's next
+
+- [Tool by Symptom](#tool-by-symptom) — not sure which tool to use? Start here
+- [Pinpoint Tab Guide](#pinpoint-tab) — how to read findings and use the Fix Table
+- [Troubleshooting](#troubleshooting) — nothing showing? Common causes and fixes
+</script>
+
+<script type="text/x-markdown" id="doc-pinpoint-tab">
+# Pinpoint Tab — aggregated findings
+
+**Panel tab:** Pinpoint
+**Fed by:** Perf Monitor, Prop Audit, Cycle Detector, Resource Tracker, Memory Counters, Web Vitals
+
+---
+
+## What Pinpoint is
+
+Pinpoint is the findings aggregator. Every tool that detects a problem writes a structured finding to the Pinpoint list. Instead of switching between tabs looking for problems, Pinpoint surfaces everything in one place — ranked by severity.
+
+If you don't know where to start, open Pinpoint first.
+
+---
+
+## What you'll see
+
+The Pinpoint tab shows a list of finding cards, one per detected issue. Each card has:
+
+```
+[HIGH] slow-render                                      attribution
+rock-grid — avg 823ms (47 renders)
+src/elements/rock-grid/rock-grid.js line 184
+→ "Reduce render cost: heavy DOM in render() ..."
+[Export] [Verify]
+```
+
+**Card anatomy:**
+
+| Element | What it means |
+|---------|--------------|
+| `[HIGH]` severity badge | HIGH / MEDIUM / LOW — how urgent the issue is |
+| finding type | `slow-render`, `memory-leak`, `prop-thrash`, `resource-outlived-owner`, etc. |
+| evidence level badge | How certain the diagnosis is |
+| component name | Which component has the issue |
+| details line | Measured values that triggered the finding |
+| file + line | Where to look in the source (only on `attribution` and above) |
+| recommendation | What to do |
+| `[Export]` | Download just this finding as Fix Table JSON |
+| `[Verify]` | Phase 8 verification — run a baseline/current comparison |
+
+---
+
+## Evidence levels
+
+| Level | Badge colour | Meaning | What to do |
+|-------|-------------|---------|-----------|
+| `observation` | Grey | Something was measured; cause is unknown | Investigate before acting |
+| `correlation` | Amber | Multiple signals point the same direction | Strong enough to file a bug |
+| `attribution` | Blue | Source file + line confirmed from call stack | Act on this directly |
+| `lifetime-violation` | Red | Listener deterministically survived disconnect | Always fix |
+| `causality-confirmed` | Green | Phase 8 verification proved the fix worked | Resolved |
+
+**Rule of thumb:** `attribution` and `lifetime-violation` are actionable immediately. `observation` needs more evidence first.
+
+---
+
+## Finding types and which tool produces them
+
+| Finding type | Source tool | Typical evidence level |
+|-------------|-------------|----------------------|
+| `slow-render` | Perf Monitor | `observation` or `attribution` |
+| `excessive-renders` | Perf Monitor | `correlation` |
+| `memory-leak` | Memory Counters | `observation` or `correlation` |
+| `mount-storm` | Memory Counters | `observation` |
+| `prop-thrash` | Prop Audit | `attribution` |
+| `same-ref-update` | Prop Audit | `observation` |
+| `resource-outlived-owner` | Resource Tracker | `lifetime-violation` |
+| `circular-update` | Cycle Detector | `attribution` |
+
+---
+
+## Empty Pinpoint tab
+
+If Pinpoint shows no findings:
+
+1. **The active tools found nothing.** This is a good outcome.
+2. **Tools aren't enabled.** Check: `Object.keys(window).filter(k => k.startsWith('__LDS'))`.
+3. **Thresholds not exceeded.** avg ms < 300 won't produce a `slow-render` finding.
+4. **Tool not triggered yet.** Resource Tracker only fires at disconnect.
+
+---
+
+## The Fix Table export
+
+Clicking **Export Fix Table** downloads a JSON array. Each element is one finding with an `evidenceCapsule`:
+
+```js
+{
+  id:             "...",
+  component:      "rock-grid",
+  filePath:       "src/elements/rock-grid/rock-grid.js",
+  issueType:      "slow-render",
+  severity:       "HIGH",
+  details:        "avg 823ms across 47 renders",
+  recommendation: "...",
+  lineNumber:     184,
+  readHint:       "Read src/elements/rock-grid/rock-grid.js lines 174 to 194",
+  evidenceCapsule: {
+    problem:        "slow-render",
+    component:      "rock-grid",
+    file:           "src/elements/rock-grid/rock-grid.js",
+    line:           184,
+    evidenceLevel:  "attribution",
+    observed:       { avgMs: 823, count: 47, maxMs: 1243 },
+    callStack:      ["rock-grid.js:184", "..."],
+    recommendation: "...",
+    claudePrompt:   "Fix a HIGH slow-render issue in <rock-grid>...",
+    verification:   null
+  }
+}
+```
+
+**`claudePrompt`** is a ready-to-paste prompt for Claude Code with component name, file, line, evidence, and recommendation.
+
+---
+
+## Phase 8 Verification
+
+The **Verify** button runs a before/after comparison:
+
+1. Click Verify → panel captures current metrics as "baseline"
+2. Apply your fix (reload, modify code, etc.)
+3. Re-open the panel — metrics are compared to the baseline
+4. If the finding's measured value improved: evidence level upgrades to `causality-confirmed`
+</script>
+
+<script type="text/x-markdown" id="doc-perf-monitor">
+# Performance Monitor — `__LDS_PERF_ENABLED__`
+
+**Source:** `src/core/perf.js`
+**Panel tab:** Perf
+**Data globals:** `window.__LDS_PERF__`, `window.__LDS_SLOW_RENDERS__`
+
+---
+
+## What it is
+
+Measures how long each LitElement component takes to render — from `connectedCallback` until its first committed DOM update. Every mount of every tracked element is timed and aggregated by tag name.
+
+---
+
+## How to enable
+
+```js
+window.__LDS_PERF_ENABLED__ = true;
+// Must be set before elements mount. Reload after setting.
+```
+
+---
+
+## How it works
+
+`attach(el)` records `t0 = performance.now()`, then waits for `el.updateComplete.then()` which resolves after the first committed DOM update, then records `t1 - t0`.
+
+```
+connectedCallback()         updateComplete resolves
+    │                              │
+    ├─ properties set              │
+    ├─ render() runs               │
+    ├─ DOM patched                 │
+    ├─ updated() fires             │
+    │                              │
+    t0 ────────────────────────── t1
+    │←──────── TTI measured ──────→│
+```
+
+---
+
+## The data shape
+
+```js
+window.__LDS_PERF__
+// { [tagName]: { count, totalMs, maxMs, minMs, samples } }
+
+{
+  "rock-grid": {
+    count:   47,
+    totalMs: 18682,
+    maxMs:   1243,
+    minMs:   82,
+    samples: [212, 345, 823, 91, ...]  // last 20 measurements
+  }
+}
+// avgMs = Math.round(totalMs / count)
+```
+
+---
+
+## Slow render detection
+
+Any render over **500ms** triggers a `console.warn` and adds to `window.__LDS_SLOW_RENDERS__`.
+
+```
+⚠ [LdsPerfMonitor] <rock-grid> slow render: 823ms
+```
+
+The slow renders log captures the last 100 events with stack traces — used by Pinpoint to show file + line.
+
+---
+
+## Console commands
+
+```js
+window.__LDS_PERF_REPORT__()   // sorted report, slowest first
+window.__LDS_PERF__            // raw live data
+window.__LDS_SLOW_RENDERS__    // slow renders with stacks
+window.__LDS_PERF_RESET__()    // clear all data
+```
+
+---
+
+## Pinpoint integration
+
+| Condition | Finding type | Evidence level |
+|-----------|-------------|----------------|
+| `avgMs > 300` | `slow-render` | `observation` |
+| `avgMs > 300` AND stack in `__LDS_SLOW_RENDERS__` | `slow-render` | `attribution` |
+| `count` abnormally high | `excessive-renders` | `correlation` |
+
+---
+
+## What you'll see in the Perf tab
+
+```
+┌─────────────────┬─────────┬────────┬────────┬────────┐
+│ tag             │ renders │ avg ms │ max ms │ min ms │
+├─────────────────┼─────────┼────────┼────────┼────────┤
+│ rock-grid       │ 47      │ 397    │ 1243   │ 82     │  ← highlighted (> 300ms)
+│ product-filter  │ 12      │ 143    │ 310    │ 88     │
+│ product-tile    │ 192     │ 42     │ 184    │ 28     │  ← fine
+└─────────────────┴─────────┴────────┴────────┴────────┘
+```
+
+- Rows where avg ms > 300ms are highlighted
+- A 🔥 badge appears on rows with a matching stack trace
+
+---
+
+## Reading the numbers
+
+| avg ms range | What it means |
+|---|---|
+| < 100ms | Fast — no action needed |
+| 100–300ms | Acceptable — watch but don't act |
+| > 300ms | Investigate — Pinpoint will flag this |
+| > 500ms | Slow render warning captured; stack trace in Pinpoint |
+
+---
+
+## Limitations
+
+- **Initial mount only.** Re-renders are not timed. For re-render performance, use `__LDS_PROP_DEBUG__`.
+- **Per-tag aggregation.** All instances of a tag share one entry.
+- **Mixin dependency.** Only elements with `LitDebugMixin` are tracked.
+- **Async-render blind spot.** If data is fetched after `updateComplete`, that second render is not measured.
+</script>
+
+<script type="text/x-markdown" id="doc-prop-audit">
+# Prop Audit — `__LDS_PROP_DEBUG__`
+
+**Source:** `src/core/prop-audit.js`
+**Panel tab:** None — output goes to browser console + Pinpoint
+**Data globals:** `window.__LDS_RENDER_REASONS__`, `window.__LDS_THRASH__`
+
+> **No panel tab.** Results appear in the **browser console** as grouped logs, and in **Pinpoint** if thrash is detected.
+
+---
+
+## What it is
+
+Two tools in one flag:
+
+- **R2-A — Render reason tracker:** logs which property changed, what the old and new values were, and a stack trace, every time a component updates.
+- **R2-B — Property thrash detector:** fires when a property is set more than N times per second on the same element.
+
+---
+
+## How to enable
+
+```js
+// Target a specific component (recommended)
+window.__LDS_PROP_DEBUG__ = 'rock-grid';
+
+// Watch all components — very noisy on complex pages
+window.__LDS_PROP_DEBUG__ = '*';
+
+// Turn off
+window.__LDS_PROP_DEBUG__ = false;
+
+// Configure thrash sensitivity (default: 5 writes per 1000ms)
+window.__LDS_THRASH_THRESHOLD__ = 3;   // stricter
+window.__LDS_THRASH_THRESHOLD__ = 10;  // more lenient
+```
+
+Can be set and changed at any time without reload.
+
+---
+
+## Console output
+
+Every update on the target component produces a grouped log:
+
+```
+▶ [LdsPropAudit] <rock-grid> — 2 prop(s) changed
+    data     before: Array[0]  after: Array[48]
+    loading  before: "true"    after: "false"
+  update triggered by   ← console.trace() here
+```
+
+The `console.trace()` shows exactly which line of your code set the property that triggered the render.
+
+---
+
+## Reading `(same ref ⚠️)`
+
+`sameRef: true` means you passed the same object/array reference as the new value. Lit sees it as a change but the content didn't actually change. This is the classic mutation bug:
+
+```js
+// Bug: this.items.push(x) then requestUpdate() → sameRef: true
+// Fix: this.items = [...this.items, x]
+```
+
+---
+
+## The data shape
+
+```js
+window.__LDS_RENDER_REASONS__
+// { [tagName]: [ ...last 50 entries ] }
+// Each entry: { prop, oldSummary, newSummary, sameRef, ts }
+
+window.__LDS_THRASH__
+// [{ tag, prop, count, windowMs, ts, stack }]
+```
+
+---
+
+## Pinpoint integration
+
+| Condition | Finding type | Evidence level |
+|-----------|-------------|----------------|
+| `thrash.length > 0` | `prop-thrash` | `attribution` |
+| `sameRef: true` frequently | `same-ref-update` | `observation` |
+
+---
+
+## Step-by-step: a component re-renders too often
+
+1. `window.__LDS_PROP_DEBUG__ = 'your-component-tag'` (no reload needed)
+2. Interact with the feature that causes excessive renders
+3. Watch the console — each grouped log = one render
+4. If `(same ref ⚠️)` repeatedly: mutation bug → fix: use immutable update pattern
+5. Check `window.__LDS_THRASH__` — if entries exist, named prop is written from multiple places
+
+---
+
+## Limitations
+
+- **Lit-specific.** Hooks `requestUpdate` and `updated()` — no data for plain custom elements.
+- **Per-instance patch, not prototype.** Elements already mounted when the flag is set are not patched.
+- **Thrash window is fixed at 1000ms.**
+</script>
+
+<script type="text/x-markdown" id="doc-inspector">
+# Component Inspector — `__LDS_INSPECTOR__`
+
+**Source:** `src/core/inspector.js`
+**Panel tab:** None — output goes to clipboard + console
+**Data globals:** `window.createComponentWithData()`
+
+> **No panel tab.** Output is written to the **clipboard** and mirrored to the console.
+
+---
+
+## What it is
+
+A hover-to-snapshot tool. When enabled, hovering over any tracked component shows a `📸 <tag-name>` button. Clicking it captures the component's full state — declared properties, private fields, and a replay hint — and copies it to the clipboard as JSON.
+
+---
+
+## How to enable
+
+```js
+// Enable hover badge on all tracked elements
+window.__LDS_INSPECTOR__ = true;
+
+// Programmatic snapshot — no hover needed
+window.createComponentWithData('rock-grid');   // by CSS selector
+window.createComponentWithData(el);            // by element reference
+```
+
+---
+
+## The snapshot shape
+
+```js
+{
+  element:    "rock-grid",
+  filePath:   "src/components/rock-grid/rock-grid.js",
+  capturedAt: "2026-10-06T10:30:00.000Z",
+
+  inputProps: {
+    productId:  "PRD-123",
+    data:       [{ id: 1, name: "Widget" }, "...+47 more"],
+    loading:    false
+  },
+
+  privateState: {
+    _selectedRows:  [1, 4, 7],
+    _sortColumn:    "name",
+    _sortDirection: "asc"
+  },
+
+  replayHint: {
+    html:      "<rock-grid\n  productId=\"PRD-123\"\n></rock-grid>",
+    mockSetup: "el.data = snapshot.inputProps['data'];\n..."
+  }
+}
+```
+
+---
+
+## Customisation
+
+```js
+// Custom file path resolver
+window.__LDS_TAG_TO_FILE__ = tag => `src/elements/${tag}/${tag}.js`;
+
+// Custom context getter — attach app-specific state
+window.__LDS_CONTEXT_GETTER__ = el => ({
+  storeState: window.__myStore__?.getStateFor(el.componentId),
+});
+
+// Serialization options
+window.__LDS_INSPECTOR_OPTS__ = {
+  maxDepth: 6, maxArrayItems: 10, maxObjKeys: 30, maxStrLen: 500
+};
+```
+
+---
+
+## What you'll see
+
+```
+┌─────────────────────────────────────┐
+│                        📸 rock-grid │  ← click this
+│   (component content)               │
+└─────────────────────────────────────┘
+```
+
+Clicking:
+1. Copies full snapshot JSON to clipboard
+2. Prints a grouped log to the console with `inputProps`, `privateState`, `replayHint`
+
+---
+
+## Limitations
+
+- **Mixin dependency.** Hover listeners only on `LitDebugMixin` elements.
+- **Clipboard availability.** Requires HTTPS or localhost and user permission.
+- **No history.** Each capture overwrites the clipboard.
+- **One capture at a time.** Overlay button is a singleton.
+</script>
+
+<script type="text/x-markdown" id="doc-event-tracer">
+# Event Tracer — `__LDS_EVENTS_TRACE__`
+
+**Source:** `src/core/event-tracer.js`
+**Panel tab:** Events
+**Data globals:** `window.__LDS_EVENTS_TIMELINE__`, `window.__LDS_EVENTS_FREQ__`
+
+---
+
+## What it is
+
+Records every dispatch through your app's custom event bus — sequence, timing, event names, payload summaries, and which component triggered each one.
+
+> **Important:** Traces **custom dispatch calls** wired via `LdsEventTracer.patchDispatch()`, not native DOM `dispatchEvent()`.
+
+---
+
+## How to enable
+
+```js
+window.__LDS_EVENTS_TRACE__ = true;
+
+// Optional: verbose mode
+window.__LDS_EVENTS_VERBOSE__ = true;
+
+// Filter timeline by event name substring
+window.__LDS_EVENTS_FILTER__ = 'product';
+```
+
+### Wiring your event bus (one-time setup)
+
+```js
+LdsEventTracer.patchDispatch(wrap => {
+  myBus.dispatch = wrap(myBus.dispatch.bind(myBus));
+});
+```
+
+The Syndigo integration (`custom/ui-platform/AciPlugin.js`) calls this automatically for `aci.dispatch`.
+
+---
+
+## The data shape
+
+```js
+window.__LDS_EVENTS_TIMELINE__
+// [{
+//   seq:           1,
+//   ts:            "10:14:32.110",
+//   elapsed:       1240,           // ms since tracer init
+//   name:          "product/select",
+//   from:          "product-tile", // heuristic from stack
+//   detailSummary: '{"id":"PRD-123"}', // truncated to 120 chars
+// }]
+
+window.__LDS_EVENTS_FREQ__
+// { "product/select": { count: 48, sources: ["product-tile"] } }
+```
+
+---
+
+## Console commands
+
+```js
+window.__LDS_EVENTS_REPORT__()       // timeline as console.table
+window.__LDS_EVENTS_FREQ_REPORT__()  // frequency sorted by count (🔥 HIGH when > 20)
+window.__LDS_EVENTS_CLEAR__()        // clear timeline and freq table
+```
+
+---
+
+## What you'll see in the Events tab
+
+```
+┌───┬──────────────┬────────────────────┬──────────────┬────────────────┐
+│ # │ elapsed ms   │ event              │ from         │ detail         │
+├───┼──────────────┼────────────────────┼──────────────┼────────────────┤
+│ 1 │ 1240         │ product/select     │ product-tile │ {"id":"PRD-1"} │
+│ 2 │ 1241         │ cart/add           │ rock-grid    │ {"qty":1}      │
+└───┴──────────────┴────────────────────┴──────────────┴────────────────┘
+```
+
+---
+
+## Reading the results
+
+| What you see | What it means |
+|---|---|
+| Same event name repeating | Possible event storm — check freq table for `🔥 HIGH` |
+| Very close elapsed timestamps | Events firing synchronously in same tick |
+| Large elapsed gap | Something is deferring that dispatch (setTimeout, async) |
+| `from: null` | Dispatched from utility module or async context |
+
+---
+
+## Limitations
+
+- **Custom event bus only.** Native `dispatchEvent` is not intercepted.
+- **`from` is heuristic.** Works for kebab-case-named component files; fails for utility modules or minified stacks.
+- **500-entry ring buffer.** Old events are dropped on busy pages.
+</script>
+
+<script type="text/x-markdown" id="doc-slow-api">
+# Slow API Monitor — `__LDS_SLOW_API__`
+
+**Source:** `src/core/slow-api.js`
+**Panel tab:** SlowAPI
+**Data globals:** `window.__LDS_SLOW_API_LOG__`
+
+---
+
+## What it is
+
+Wraps methods on any API object to detect slow calls. When a wrapped method exceeds the threshold, it logs to `window.__LDS_SLOW_API_LOG__`, emits a `console.warn`, and shows a visual orange badge overlay on the component that triggered the call.
+
+---
+
+## How to enable
+
+```js
+window.__LDS_SLOW_API__ = true;
+window.__LDS_SLOW_API_MS__ = 1000;    // threshold in ms (default: 2000)
+window.__LDS_SLOW_API_SILENT__ = true; // log only, no visual badge
+```
+
+### Wiring your API object
+
+```js
+LdsSlowApiMonitor.wrapObject(myApiClient, ['get', 'post', 'query']);
+
+// Or wrap a singleton
+LdsSlowApiMonitor.wrapObject(window.__dataObjectManager__, ['get', 'findAll']);
+```
+
+---
+
+## The data shape
+
+```js
+window.__LDS_SLOW_API_LOG__[0]
+// {
+//   ts:        "10:14:32.110",
+//   ms:        1823,
+//   method:    "get",
+//   tag:       "rock-grid",       // attributed component (null if unattributed)
+//   operation: "product/filters",
+//   request:   { ... },
+//   response:  { ... },
+//   status:    200
+// }
+```
+
+---
+
+## What you'll see
+
+**On the page itself** — an orange badge appears directly on the slow component:
+
+```
+┌─────────────────────────────────────┐
+│  ⏱ 1823ms                           │
+│   (component content)               │
+└─────────────────────────────────────┘
+```
+
+The badge auto-removes after 8 seconds.
+
+**In the SlowAPI tab** — a table of all calls that exceeded the threshold.
+
+---
+
+## Console commands
+
+```js
+window.__LDS_SLOW_API_REPORT__()  // table of slow calls
+window.__LDS_SLOW_API_LOG__       // full log for scripting
+```
+
+---
+
+## Component attribution
+
+**Accurate for:** API calls made synchronously in `connectedCallback`
+**Not tracked:** Calls from `updated()`, `firstUpdated()`, event handlers — these have `tag: null`
+
+---
+
+## Sanity check
+
+```js
+// Confirm the API object is wrapped:
+window.__dataObjectManager__?.get?.__ldsSlowApiWrapped  // true → wrapped
+
+// Trigger all calls to flag temporarily:
+window.__LDS_SLOW_API_MS__ = 1;
+// Interact → check the log → raise back
+window.__LDS_SLOW_API_MS__ = 2000;
+```
+</script>
+
+<script type="text/x-markdown" id="doc-console">
+# Console Capture — `__LDS_CONSOLE_ENABLED__`
+
+**Source:** `src/core/console.js`
+**Panel tab:** Console
+**Data globals:** `window.__LDS_CONSOLE__`
+
+---
+
+## What it is
+
+Patches `console.error` and `console.warn` to capture every call into a bounded ring buffer (200 entries). The original function still fires normally — nothing is suppressed.
+
+---
+
+## How to enable
+
+```js
+window.__LDS_CONSOLE_ENABLED__ = true;
+// Set before page load for a clean session
+```
+
+The patch is session-global and **not reversible** per session — `console.error`/`warn` remain wrapped until page reload.
+
+---
+
+## The data shape
+
+```js
+window.__LDS_CONSOLE__
+// [{ level, message, ts }]
+// Capped at 200 entries.
+
+window.__LDS_CONSOLE__[0]
+// {
+//   level:   "error",
+//   message: "Uncaught TypeError: Cannot read properties of undefined...",
+//   ts:      "2026-10-06T10:14:32.110Z"
+// }
+```
+
+---
+
+## Console commands
+
+```js
+window.__LDS_CONSOLE__        // read the buffer directly
+window.__LDS_CONSOLE_CLEAR__() // clear the buffer
+```
+
+---
+
+## Panel tab: Console
+
+The Console tab shows entries in reverse-chronological order (newest first):
+- **Level filter** — `all` / `error` / `warn`
+- **Search** — filters by message substring
+- **Copy** — copies filtered entries as JSON
+
+---
+
+## What you'll see
+
+```
+[10:15:01] ERROR  Uncaught promise rejection: fetch failed
+[10:14:33] WARN   [LdsMemory] lifetime-violation: <rock-grid> (instance #3)...
+[10:14:32] ERROR  TypeError: Cannot read properties of undefined (reading 'id')
+```
+
+---
+
+## Limitations
+
+- **`console.log` is not captured.** Only `error` and `warn`.
+- **Message is a flat string, not structured.** Complex objects serialize as `"[object Object]"`.
+- **Not reversible mid-session.**
+- **200-entry cap.** On noisy pages, older entries are lost.
+- **No stack traces.** Only the formatted message text is stored.
+</script>
+
+<script type="text/x-markdown" id="doc-vitals">
+# Web Vitals — `__LDS_VITALS_ENABLED__`
+
+**Source:** `src/core/vitals.js`
+**Panel tab:** Vitals
+**Data globals:** `window.__LDS_VITALS__`
+
+---
+
+## What it is
+
+Measures Core Web Vitals and Long Tasks using the browser's `PerformanceObserver` API. No external library.
+
+| Metric | Full name | What it measures |
+|--------|-----------|-----------------|
+| **LCP** | Largest Contentful Paint | When the largest image or text block became visible |
+| **CLS** | Cumulative Layout Shift | Total unexpected layout movement |
+| **INP** | Interaction to Next Paint | Worst interaction delay |
+| **Long Tasks** | — | Script blocks >50ms that freeze the main thread |
+
+---
+
+## How to enable
+
+```js
+window.__LDS_VITALS_ENABLED__ = true;
+// Set before page load for best results
+```
+
+---
+
+## The data shape
+
+```js
+window.__LDS_VITALS__
+// {
+//   lcp:       { valueMs, element, url, ts },
+//   cls:       { value, entries[] },
+//   inp:       { valueMs, eventType, ts },
+//   longTasks: [{ durationMs, ts }]
+// }
+```
+
+---
+
+## Status thresholds
+
+| Metric | Good | Needs improvement | Poor |
+|--------|------|------------------|------|
+| LCP | < 2500ms | 2500–4000ms | > 4000ms |
+| CLS | < 0.1 | 0.1–0.25 | > 0.25 |
+| INP | < 200ms | 200–500ms | > 500ms |
+
+---
+
+## What you'll see in the Vitals tab
+
+```
+LCP   2340ms  ●  Needs improvement    (good: < 2500ms)
+CLS   0.012   ●  Good
+INP   180ms   ●  Good
+
+Long Tasks
+  823ms  at 10:00:02
+  124ms  at 10:14:32
+```
+
+---
+
+## Correlating with Perf tab
+
+```js
+window.__LDS_VITALS__.longTasks[0].ts  // when the long task fired
+// Compare with Perf tab — which component has a similar maxMs timing?
+```
+
+---
+
+## Limitations
+
+- **Page-level only.** Vitals are per-page, not per-component.
+- **LCP is the last candidate, not final.** May update multiple times.
+- **INP tracks worst interaction, not average.**
+- **CLS entries capped at 20.**
+</script>
+
+<script type="text/x-markdown" id="doc-network">
+# Network Monitor — `__LDS_NETWORK_ENABLED__`
+
+**Source:** `src/core/network.js`
+**Panel tab:** Network
+**Data globals:** `window.__LDS_NETWORK_LOG__`
+
+---
+
+## What it is
+
+Patches `window.fetch` and `XMLHttpRequest` to capture every outbound request: URL, method, status code, duration, response size, and whether it was slow, large, or an error. Supports a decoder plugin so protocol-encoded request bodies (e.g., Falcor paths) can be decoded into readable objects.
+
+---
+
+## How to enable
+
+```js
+window.__LDS_NETWORK_ENABLED__ = true;
+// Must be enabled before any fetch/XHR calls. Reload after enabling.
+```
+
+---
+
+## The data shape
+
+```js
+window.__LDS_NETWORK_LOG__
+// [{ url, fullUrl, method, status, durationMs, responseSizeKB, ts, isError, isSlow, isLarge, type, decoded }]
+// Capped at 200 entries.
+
+window.__LDS_NETWORK_LOG__[0]
+// {
+//   url:            "/api/products?page=1",
+//   method:         "GET",
+//   status:         200,
+//   durationMs:     1823,
+//   responseSizeKB: 48,
+//   isError:        false,
+//   isSlow:         true,   // durationMs > 2000
+//   isLarge:        false,  // responseSizeKB > 512
+//   type:           "fetch",
+//   decoded:        null    // populated by decoder plugin if registered
+// }
+```
+
+**Thresholds (hard-coded):**
+- Slow: `durationMs > 2000`
+- Large: `responseSizeKB > 512`
+
+---
+
+## Decoder plugin
+
+```js
+LdsNetwork.registerDecoder(fn)
+// fn(rawUrl: string, body: string | null) → decodedObject | null
+```
+
+The Syndigo integration registers `FalcorDecoder` via `custom/ui-platform/index.js`.
+
+---
+
+## Panel: Network tab
+
+The tab shows a filterable table:
+- **Status filter:** all / errors / slow / large
+- **Search:** filters by URL substring
+- **Expand row:** shows full URL, timing, size, and `decoded` if available
+
+```
+URL                          method  status  duration  size
+/api/products?page=1         GET     200     1823ms    48KB   ← amber (slow)
+/api/recommendations         GET     404     82ms      —      ← red (error)
+/model.json                  POST    200     340ms     12KB
+```
+
+---
+
+## Falcor calls: use the Falcor tab instead
+
+If your app uses the Syndigo Falcor integration, Falcor calls appear in the Network tab decoded but still as flat rows. The **Falcor tab** provides burst grouping, path anatomy, duplicate detection, and search session linking.
+
+```js
+window.__LDS_NETWORK_ENABLED__ = true;  // provides the data
+window.__LDS_FALCOR_VIEW__ = true;      // shows Falcor tab
+// reload → navigate → open panel → Falcor tab
+```
+
+---
+
+## Console commands
+
+```js
+// Errors only
+window.__LDS_NETWORK_LOG__.filter(e => e.isError)
+
+// Slow requests sorted by duration
+window.__LDS_NETWORK_LOG__
+  .filter(e => e.isSlow)
+  .sort((a, b) => b.durationMs - a.durationMs)
+```
+
+---
+
+## Limitations
+
+- **Thresholds are hard-coded.** 2000ms slow / 512KB large — cannot be changed.
+- **No request body capture.** Raw request body is not stored in the log entry.
+- **No cancellation tracking.** Aborted requests don't add a "cancelled" entry.
+</script>
+
+<script type="text/x-markdown" id="doc-cycle-detector">
+# Cycle Detector — `__LDS_CYCLE_DETECT__`
+
+**Source:** `src/core/cycle-detector.js`
+**Panel tab:** None — findings appear in Pinpoint
+**Data globals:** `window.__LDS_CYCLES__`
+
+> **No panel tab.** Findings appear in **Pinpoint** as `circular-update` cards.
+
+---
+
+## What it is
+
+Detects circular property-update chains between components — where component A's render triggers an update on B, which triggers an update back on A. These cause infinite rendering loops and browser freezes.
+
+---
+
+## How to enable
+
+```js
+window.__LDS_CYCLE_DETECT__ = true;
+// Reload after enabling for full coverage
+```
+
+---
+
+## How it works
+
+Builds a directed graph of "who triggered whose render" via `performUpdate` and `requestUpdate` hooks, then runs DFS to detect cycles.
+
+```
+_updateGraph:
+  Map<tagName, Set<tagName>>
+  { "rock-grid": Set { "product-tile" },
+    "product-tile": Set { "rock-grid" } }   ← cycle!
+```
+
+---
+
+## The data shape
+
+```js
+window.__LDS_CYCLES__[0]
+// {
+//   path:  "rock-grid → product-tile → rock-grid",
+//   count: 47,        // how many times this cycle fired
+//   prop:  "selected",
+//   ts:    "2026-10-06T10:14:32.110Z",
+//   stack: "Error\n  at rock-grid.js:184\n..."
+// }
+```
+
+---
+
+## Console commands
+
+```js
+window.__LDS_CYCLES_REPORT__()
+// [LdsCycleDetector] 1 cycle(s) detected
+// rock-grid → product-tile → rock-grid, count: 47
+
+window.__LDS_CYCLES__  // full data
+```
+
+---
+
+## Pinpoint: what you'll see
+
+```
+[HIGH] circular-update                                attribution
+rock-grid
+rock-grid → product-tile → rock-grid (count: 47)
+product-tile.js line 92
+→ "Remove or gate the cross-component property write at product-tile.js:92"
+```
+
+- `count: 47` = render loop that ran 47 times
+- `count: 1` = cycle fired once and stopped (lower urgency)
+
+---
+
+## Step-by-step: page hangs on interaction
+
+1. `window.__LDS_CYCLE_DETECT__ = true` → reload
+2. Perform the interaction that causes the hang
+3. Check console for `[LdsCycleDetector] Cycle detected:` messages
+4. Read `window.__LDS_CYCLES__[0].stack` — shows the exact line triggering the final link
+5. Fix: add a guard — `if (this.value !== newValue) { parent.value = newValue; }`
+
+---
+
+## Reliability note
+
+The `_updateGraph` is never cleared between detections. In long sessions, accumulated edges may produce false-positive cycle reports. Call `window.__LDS_CYCLES__ = []` to clear the report. A reload clears the graph entirely.
+
+**Per-tag granularity** — tracks by tag name, not by instance.
+</script>
+
+<script type="text/x-markdown" id="doc-resource-tracker">
+# Resource Tracker — `__LDS_RESOURCE_TRACKER__`
+
+**Source:** `src/core/memory.js`
+**Panel tab:** None — findings appear in Pinpoint
+**Data globals:** `window.__LDS_RESOURCE_VIOLATIONS__`
+
+> **No panel tab.** Findings appear in **Pinpoint** as `lifetime-violation` cards.
+>
+> **Critical workflow note:** Violations are only detected when an element **disconnects**. You must navigate *away* from the page to trigger detection.
+
+---
+
+## What it is
+
+Tracks `addEventListener` calls and detects which ones survive past `disconnectedCallback`. Any listener that was registered but not removed before disconnect is a **lifetime violation** — a deterministic leak.
+
+---
+
+## How to enable
+
+```js
+window.__LDS_RESOURCE_TRACKER__ = true;
+// Set before elements mount. Reload after enabling.
+
+// Customise suppressed event types (default: mousemove, pointermove, touchmove, scroll, wheel, mouseenter, mouseleave)
+window.__LDS_SUPPRESS_EVENTS__ = ['mousemove', 'scroll'];
+```
+
+---
+
+## How it works
+
+`attach(el)` sets `_currentOwner = el` during `connectedCallback`. Any `window.addEventListener` or `document.addEventListener` call during this window is attributed to the element. On `disconnectedCallback`, any registered-but-not-removed listener is recorded as a violation.
+
+---
+
+## The data shape
+
+```js
+window.__LDS_RESOURCE_VIOLATIONS__[0]
+// {
+//   ownerTag:    "rock-grid",
+//   instanceNum: 3,
+//   resources: [
+//     { type: "resize", target: "window", stack: "...at rock-grid.js:184..." },
+//     { type: "click",  target: "self",   stack: "..." }
+//   ],
+//   detectedAt: "2026-10-06T10:14:32.110Z"
+// }
+```
+
+---
+
+## Console output when violations occur
+
+```
+[LdsMemory] lifetime-violation: <rock-grid> (instance #3) disconnected with 2 unreleased resource(s)
+  resize on window
+  click on self
+Details: window.__LDS_RESOURCE_VIOLATIONS__
+```
+
+---
+
+## Pinpoint: what you'll see
+
+```
+[HIGH] resource-outlived-owner                     lifetime-violation
+rock-grid (instance #3)
+2 unreleased listeners: resize (window), click (self)
+→ "Add removeEventListener in disconnectedCallback for: resize (on window), click (on self)"
+```
+
+Evidence level is always `lifetime-violation` — it is **deterministic**. The recommendation names exactly which `removeEventListener` calls to add.
+
+---
+
+## Step-by-step: I suspect event listeners are leaking
+
+1. `window.__LDS_RESOURCE_TRACKER__ = true` → **reload**
+2. Navigate to the suspect page
+3. **Navigate away** — this triggers `disconnectedCallback`
+4. Check console for `[LdsMemory] lifetime-violation:` messages
+5. Open Pinpoint → find red `lifetime-violation` cards
+6. Fix: add `removeEventListener` in `disconnectedCallback`
+7. Verify: `window.__LDS_RESOURCE_VIOLATIONS__.length === 0`
+
+---
+
+## Limitations
+
+- **Async registrations not attributed.** Listeners added in `setTimeout`, `updated()` etc. are not tracked (ownership clears after `connectedCallback`).
+- **Same function reference tracks once.** If the same `fn` is passed to two different targets, only the first is tracked.
+- **Overhead.** Patching `window.addEventListener` globally has measurable overhead. Disable after investigating.
+</script>
+
+<script type="text/x-markdown" id="doc-workflow-baseline">
+# Workflow Baseline — `__LDS_WORKFLOW_BASELINE__`
+
+**Source:** `src/panel/LdsDebugPanel.js`
+**Panel tab:** Summary (collapsible "Workflow Baseline" section)
+**Storage:** `localStorage` — key `__lds_workflow_baseline_${encodeURIComponent(location.pathname)}`
+
+---
+
+## What it is
+
+Remembers what "normal" looks like for each page so that regressions in render count, mount frequency, or network behaviour are detected automatically the next time the panel opens.
+
+---
+
+## The problem it solves
+
+You fix a bug. A week later, render count for `<rock-grid>` is now 174 — it was 12 when you set the baseline. Your test suite passed because functional tests verify correct output, not render efficiency.
+
+With the baseline, the panel shows `⚠ rock-grid renders: 174 (baseline: 12, +1350%)` on the first panel open after the regression.
+
+---
+
+## Setting a baseline
+
+The **Set as baseline** button in the Summary tab captures:
+
+```js
+{
+  url:             "https://app.example.com/products",
+  capturedAt:      "2026-10-06T12:00:00.000Z",
+  renders:         { "rock-grid": 12, "product-tile": 48 },
+  mounts:          { "rock-grid": 1,  "product-tile": 1 },
+  networkCount:    3,
+  networkFailures: 0
+}
+```
+
+---
+
+## Divergence thresholds
+
+**Render counts:**
+- `+50% to +199%` → **warn**
+- `+200% or more` → **alert**
+
+**Mount counts:**
+- `+100% or more` → **warn**
+
+**Network failures:**
+- Any new failures vs baseline → **warn**
+
+---
+
+## What you'll see in the Summary tab
+
+```
+▼ Workflow Baseline                                  ⚠ 1 alert
+
+  Baseline captured: Oct 6, 12:00
+
+  ⚠ rock-grid renders: 174 (baseline: 12, +1350%)   ← alert (red)
+  ✓ product-tile renders: 50 (baseline: 48, +4%)    ← fine (green)
+  ⚠ rock-grid mounts: 3 (baseline: 1, +200%)        ← warn (amber)
+
+  [Clear baseline]   [Update baseline]
+```
+
+---
+
+## Sanity check
+
+```js
+// Check if a baseline exists for this page:
+Object.keys(localStorage).filter(k => k.startsWith('__lds_workflow'))
+// ['__lds_workflow_baseline_%2Fproducts']
+
+// Read the stored baseline:
+JSON.parse(localStorage.getItem('__lds_workflow_baseline_' + encodeURIComponent(location.pathname)))
+```
+
+---
+
+## Limitations
+
+- **Pathname-keyed only.** Hash routing or query-param routing all map to the same pathname.
+- **No history.** Only one stored baseline per pathname.
+- **Render count is session-total, not per-page-view.**
+- **No Pinpoint integration.** Divergences shown only in Summary tab.
+</script>
+
+<script type="text/x-markdown" id="doc-memory-counters">
+# Memory Counters — always on
+
+**Source:** `src/core/memory.js`
+**Panel tab:** Memory
+**Data globals:** `window.__LDS_MEMORY__`, `window.__LDS_STORMS__`, `window.__LDS_MOUNT_CYCLES__`
+
+---
+
+## What it is
+
+Tracks mount and unmount counts for every custom element using `LitDebugMixin`. This tool is **always active** — no flag required.
+
+### What it tracks
+
+- `mounted`: incremented on `connectedCallback`
+- `unmounted`: incremented on `disconnectedCallback`
+- `gcCount`: incremented when a disconnected element is GC'd (via `FinalizationRegistry`)
+- `active = mounted - unmounted` — the count of live instances
+
+**Storm detection:** If a tag accumulates more than 20 mounts in a session, a `console.warn` fires.
+
+---
+
+## The data shape
+
+```js
+window.__LDS_MEMORY__
+// Map<tagName, { mounted, unmounted, gcCount }>
+
+for (const [tag, d] of window.__LDS_MEMORY__) {
+  const active = d.mounted - d.unmounted;
+  console.log(tag, { mounted: d.mounted, unmounted: d.unmounted, active });
+}
+// rock-grid:     { mounted: 47, unmounted: 46, active: 1,  gcCount: 44 }
+// product-tile:  { mounted: 192, unmounted: 192, active: 0, gcCount: 190 }
+```
+
+---
+
+## Console commands
+
+```js
+window.__LDS_MEMORY_REPORT__()  // table sorted by active count
+window.__LDS_MEMORY_RESET__()   // clear all counters
+```
+
+---
+
+## What you'll see in the Memory tab
+
+```
+┌─────────────────┬─────────┬───────────┬────────┬────┐
+│ tag             │ mounted │ unmounted │ active │ GC │
+├─────────────────┼─────────┼───────────┼────────┼────┤
+│ rock-grid       │ 47      │ 46        │ 1      │ 44 │
+│ product-tile    │ 192     │ 192       │ 0      │ 190│
+│ nav-header      │ 1       │ 0         │ 1      │ 0  │ ← expected singleton
+│ search-dialog   │ 8       │ 5         │ 3      │ 4  │ ← highlighted (active > 3)
+└─────────────────┴─────────┴───────────┴────────┴────┘
+```
+
+- Rows where `active > 3` are highlighted amber
+- Storm incidents appear below the table
+
+---
+
+## Reading the numbers
+
+| What you see | What it means |
+|---|---|
+| `active: 1` for a page-level component | Normal — it's a singleton |
+| `active: 0` after navigating away | Clean — disconnected correctly |
+| `active` growing across multiple navigations | Leak — instances not being unmounted |
+| `active: 48` for `product-tile` on a products page | Normal — 48 list items |
+| Storm on `product-tile` count: 200 | List is re-creating elements from scratch instead of updating |
+
+---
+
+## Pinpoint integration
+
+| Condition | Finding type | Evidence level |
+|-----------|-------------|----------------|
+| `active > 3` (single session) | `memory-leak` | `observation` |
+| `active` grows monotonically across ≥3 cycles | `memory-leak` | `correlation` (`progressive-leak`) |
+| `mounted > 20` in session | `mount-storm` | `observation` |
+
+---
+
+## Step-by-step: detecting a leak
+
+1. Open Memory tab (no flag needed)
+2. Navigate to the suspect page — note active counts
+3. Navigate away — active counts should drop toward 0
+4. Navigate back → note active counts again
+5. Repeat 3–4 twice — if active count grows each time, it's a progressive leak
+6. Enable Resource Tracker to find specific listeners not being cleaned up
+</script>
+
+<script type="text/x-markdown" id="doc-tool-by-symptom">
+# Tool by Symptom — which tool to use
+
+Start here if you know the problem but not which tool to reach for.
+
+---
+
+## Performance problems
+
+### "The page feels slow on first load"
+**Tool:** Performance Monitor `__LDS_PERF_ENABLED__`
+**Tab:** Perf
+**What to look for:** Top row in the Perf table — the component with the highest avg ms is the bottleneck. If avg ms > 500, Pinpoint will have a stack trace.
+
+### "The page gets slower the longer I use it"
+**Tools:**
+1. Memory Counters (always on) → **Memory tab** — check if `active` count grows over navigation cycles
+2. Resource Tracker `__LDS_RESOURCE_TRACKER__` → **Pinpoint tab** — check for `lifetime-violation` findings
+
+### "A component re-renders way more than it should"
+**Tool:** Prop Audit `__LDS_PROP_DEBUG__ = 'your-component'`
+**Tab:** None (console + Pinpoint)
+**What to look for:** Console logs showing which prop changes on each render. `sameRef: true` means the component is re-rendering for no real data change.
+
+### "There's jank / frame drops during interaction"
+**Tools:**
+1. Web Vitals `__LDS_VITALS_ENABLED__` → **Vitals tab** — check Long Tasks list for script blocks > 50ms
+2. Prop Audit → `window.__LDS_THRASH__` — check if a prop is being written many times per second
+
+### "API calls are slow but I don't know which one"
+**Tool:** Slow API Monitor `__LDS_SLOW_API__`
+**Tab:** SlowAPI
+**What to look for:** Visual badge (`⏱ 823ms`) appears directly on the component that triggered the slow call.
+
+---
+
+## Memory problems
+
+### "I think elements are not being cleaned up"
+**Tool:** Memory Counters (always on)
+**Tab:** Memory
+**What to look for:** `active` count for a tag should return to 0 after navigating away.
+
+### "I think event listeners are accumulating"
+**Tool:** Resource Tracker `__LDS_RESOURCE_TRACKER__`
+**Tab:** Pinpoint
+**What to look for:** `lifetime-violation` cards. Each violation names the component, event type, and target.
+
+### "The browser tab's memory usage grows over time"
+**Tools (in order):**
+1. Memory Counters → Memory tab — `active` count growing?
+2. Resource Tracker → Pinpoint — global listeners (`target: "window"`) are the most impactful leak class
+3. Component Inspector `__LDS_INSPECTOR__` → clipboard — snapshot a suspicious component
+
+---
+
+## Network problems
+
+### "I want to see every request this page makes"
+**Tool:** Network Monitor `__LDS_NETWORK_ENABLED__`
+**Tab:** Network
+
+### "Network calls are failing and I don't know which"
+**Tool:** Network Monitor
+**Tab:** Network → filter "Errors"
+Also check: **Console tab** — `console.error` from failed fetches is captured there.
+
+### "There are too many identical Falcor calls and I can't tell them apart"
+**Tool:** Falcor Tab `__LDS_NETWORK_ENABLED__` + `__LDS_FALCOR_VIEW__`
+**Tab:** Falcor → Grouped view
+**What to look for:** Burst groups — one group = one user action. Check `dataIndex×count` within each group.
+
+### "I think the app is re-fetching the same Falcor data unnecessarily"
+**Tool:** Falcor Tab
+**Tab:** Falcor → analytics footer
+**What to look for:** "N duplicate paths detected" warning.
+
+### "A Falcor operation is slow — I want to understand why"
+**Tools:**
+1. Falcor Tab → Grouped view — is the slow burst `sequential` (calls waited) or `parallel` (all fired at once)?
+2. Slow API Monitor → SlowAPI tab — is slowness in `initiateRequest()` or in the XHR itself?
+
+### "I want to understand a search session end-to-end"
+**Tool:** Falcor Tab
+**Tab:** Falcor → Search Sessions view
+**What to look for:** One session per search action. Compare CALL duration vs GET durations.
+
+---
+
+## Rendering / update problems
+
+### "A component re-renders when nothing should have changed"
+**Tool:** Prop Audit `__LDS_PROP_DEBUG__ = 'your-component'`
+**What to look for:** `sameRef: true` — same array or object reference being passed as new.
+
+### "I see a render loop / browser hangs on interaction"
+**Tool:** Cycle Detector `__LDS_CYCLE_DETECT__`
+**Tab:** Pinpoint
+**What to look for:** `circular-update` finding with a `path` like `rock-grid → product-tile → rock-grid`.
+
+### "I don't know what state a component is in right now"
+**Tool:** Component Inspector `__LDS_INSPECTOR__`
+**Tab:** None (clipboard + console)
+**What to look for:** Hover → click 📸 → clipboard contains all props and private state as JSON.
+
+---
+
+## Event bus problems
+
+### "I don't know what events are firing during this interaction"
+**Tool:** Event Tracer `__LDS_EVENTS_TRACE__`
+**Tab:** Events
+**What to look for:** Timeline table with sequence numbers, timestamps, event names, and source component.
+
+### "An event is firing way too many times"
+**Tool:** Event Tracer
+**What to look for:** `window.__LDS_EVENTS_FREQ_REPORT__()` → any event with `🔥 HIGH` (count > 20).
+
+---
+
+## Page health / scoring
+
+### "I want a single health score for this page"
+**Tab:** Summary (no flag needed if other tools are enabled)
+The Summary tab shows: Vitals (LCP/CLS/INP), error count, slow API count, memory stats, and a 0–100 page health score.
+
+### "I need to catch regressions across deploys"
+**Tool:** Workflow Baseline
+**Tab:** Summary → Workflow Baseline section
+Set a baseline after a healthy session. Future sessions show divergence automatically.
+
+---
+
+## Sharing / reporting
+
+### "I want to share this debug session with a teammate"
+Panel → **Download JSON** → share the file. They use panel → **Import** to load it.
+
+### "I want Claude Code to fix the issues I found"
+Pinpoint tab → **Export Fix Table** → paste `evidenceCapsule.claudePrompt` from the highest-severity finding into Claude Code.
+</script>
+
+<script type="text/x-markdown" id="doc-troubleshooting">
+# Troubleshooting — common issues
+
+---
+
+## The panel won't open / the 🐞 badge is missing
+
+**Check:**
+```js
+customElements.get('lds-debug-panel')       // undefined → element not registered
+document.querySelector('lds-debug-panel')   // null → not mounted in app shell
+```
+
+**Fix:** Ensure `<lds-debug-panel>` is in your app shell template.
+
+---
+
+## I enabled a flag but the panel tab is empty
+
+**Most common cause:** The flag was set *after* elements mounted.
+
+**Fix:** Set the flag → reload the page.
+
+```js
+window.__LDS_PERF_ENABLED__ = true;
+// Then reload (Ctrl+R / Cmd+R)
+```
+
+**Exception — these can be toggled live without reload:**
+- `__LDS_PROP_DEBUG__` (patches on next element connect)
+- `__LDS_INSPECTOR__` (toggles the hover badge)
+- `__LDS_EVENTS_TRACE__` (records from the moment it's set)
+
+---
+
+## The Perf tab is empty after reload
+
+```js
+Object.keys(window.__LDS_PERF__)
+// [] → one of:
+//   - LitDebugMixin is not installed on your elements
+//   - The flag was set after elements mounted
+//   - You're on a page with no tracked elements
+```
+
+---
+
+## The Resource Tracker shows nothing in Pinpoint
+
+**Required workflow:**
+1. Enable: `window.__LDS_RESOURCE_TRACKER__ = true` → reload
+2. Navigate to the suspect page (elements mount)
+3. Navigate **away** from it (elements disconnect → violations detected)
+4. Check console for `[LdsMemory] lifetime-violation:` messages
+5. Open panel → Pinpoint → `lifetime-violation` cards
+
+---
+
+## The Memory tab shows active count > 0 but I don't think there's a leak
+
+Not every non-zero active count is a leak:
+- `active: 1` for a singleton component = normal
+- `active: 48` for product-tile with 48 products = normal
+- `active` growing monotonically across repeated navigations = leak
+
+---
+
+## Prop Audit logs are flooding the console
+
+`__LDS_PROP_DEBUG__ = '*'` is very noisy. Target only the component you're investigating:
+```js
+window.__LDS_PROP_DEBUG__ = 'rock-grid';
+```
+
+---
+
+## The Cycle Detector fires but the page doesn't freeze
+
+May be a false positive from accumulated graph edges. Check:
+```js
+window.__LDS_CYCLES__ = [];  // clear the report
+// Reproduce the interaction
+window.__LDS_CYCLES__        // still empty → false positive
+```
+
+---
+
+## The Workflow Baseline section shows "No baseline stored"
+
+The key is `__lds_workflow_baseline_${encodeURIComponent(location.pathname)}`.
+
+```js
+Object.keys(localStorage).filter(k => k.startsWith('__lds_workflow'))
+```
+
+You may be on a different pathname than where the baseline was captured.
+
+---
+
+## The Event Tracer shows nothing
+
+**Check 1:** Was the event bus wired?
+```js
+LdsEventTracer.patchDispatch(wrap => {
+  window.__myBus__.dispatch = wrap(window.__myBus__.dispatch.bind(window.__myBus__));
+});
+```
+
+**Check 2:** Is the flag on?
+```js
+window.__LDS_EVENTS_TRACE__ = true;
+```
+
+**Check 3:** Are you using native `dispatchEvent()`? The Event Tracer only records dispatches through the patched bus function.
+
+---
+
+## The Falcor tab shows "No Falcor calls captured yet"
+
+**1. `__LDS_NETWORK_ENABLED__` was not set before page load**
+```js
+window.__LDS_NETWORK_ENABLED__ = true;
+// Reload — XHR patch must be installed before Falcor calls fire
+```
+
+**2. FalcorDecoder is not registered**
+```js
+// Should return N > 0 after navigating to an entity page:
+window.__LDS_NETWORK_LOG__.filter(n => n.decoded?.protocol === 'falcor').length
+// If 0: ensure custom/ui-platform/index.js is imported in your app entry point
+```
+
+**3. The page doesn't use Falcor**
+Not all pages use Falcor. Navigate to an entity detail page or search page.
+
+---
+
+## The Falcor tab shows calls but entityTypes / entityIds / fields are all empty
+
+Path anatomy extraction uses `byIds` as the pivot. If the model uses a different path structure, these fields will be empty. Check raw paths:
+```js
+window.__LDS_NETWORK_LOG__
+  .find(n => n.decoded?.protocol === 'falcor')
+  ?.decoded?.paths
+```
+
+---
+
+## The Falcor tab shows "parallel" but calls feel sequential
+
+"Parallel" means calls **started** within 100ms. It doesn't mean they finished concurrently — response processing may still be sequential.
+
+Check: if `totalMs` >> longest individual call's `durationMs`, calls are processing responses sequentially.
+
+---
+
+## The Falcor tab shows duplicate paths but I don't know what to do
+
+**Common causes:**
+- **Two components independently requesting the same entity** — fix: share the data request through a common service
+- **Navigation pattern** — user navigated away and back, second visit re-fetched everything (expected if Falcor model isn't persisted across navigations)
+- **Batch splitting** — large path set split into multiple XHRs by the batch scheduler (expected, by design)
+
+Check whether duplicates appear in the **same burst** (suspect: over-requesting) or **separate bursts** (expected: separate user actions).
+
+---
+
+## The exported JSON is empty or missing sections
+
+Each section only contains data if the corresponding tool was enabled. An empty `perf: {}` means `__LDS_PERF_ENABLED__` was not set before page load.
+
+```js
+window.__LDS_DEBUG__ = {
+  perf: true, network: true, vitals: true, console: true
+};
+// Reload, use the app, then Download JSON
+```
+
+---
+
+## The panel health score seems wrong
+
+The health score (0–100) is only as accurate as the tools that are enabled. If no tools are on, the score defaults to 100.
+To get an accurate score: enable the tools relevant to your investigation before opening the panel.
+</script>
+
+<script type="text/x-markdown" id="doc-falcor-tab">
+# Falcor Tab — Falcor Network Toolkit
+
+**Source:** `custom/ui-platform/FalcorDecoder.js` + `custom/ui-platform/FalcorNetworkEnhancer.js`
+**Panel tab:** Falcor
+**Prerequisite flag:** `window.__LDS_NETWORK_ENABLED__ = true`
+**Tab visibility flag:** `window.__LDS_FALCOR_VIEW__ = true`
+**Data source:** `window.__LDS_NETWORK_LOG__` filtered to `decoded.protocol === 'falcor'`
+
+> **Syndigo-specific.** This tab is part of `custom/ui-platform/` — not the generic lit-debug-suite core. Requires `FalcorDecoder` to be registered with `LdsNetwork` (done automatically by `custom/ui-platform/index.js`).
+
+---
+
+## The problem it solves
+
+The Network tab shows Falcor calls as rows with identical-looking names:
+
+```
+POST  /data/entityData.json      423ms
+POST  /data/entityData.json      389ms
+POST  /data/entityGovernData.json 180ms
+…
+```
+
+The Falcor tab decodes the POST body, groups related calls, and surfaces path anatomy — the actual entity types, entity IDs, and fields being requested.
+
+---
+
+## Why there are so many Falcor calls
+
+- **One XHR per dataIndex:** Each data domain has its own endpoint
+- **Multiple XHRs per dataIndex:** The bolt pipeline fires several sequential `FalcorManager.get()` calls for a single data request
+- **ImmediateScheduler:** XHRs fire synchronously, causing a burst of 5–15 calls within milliseconds
+- **Result:** 10+ identical POST calls with no visible relationship
+
+---
+
+## How to enable
+
+```js
+window.__LDS_NETWORK_ENABLED__ = true;   // captures XHR/fetch
+window.__LDS_FALCOR_VIEW__ = true;       // shows Falcor tab
+// Reload — XHR patch must be installed before Falcor calls fire
+```
+
+---
+
+## The three views
+
+### Grouped view (default)
+
+Groups calls that fired within 200ms of each other into "bursts". One burst = one user action.
+
+```
+Burst 1  847ms  entityData×3 · entityGovernData×2  12 IDs  parallel  ▼
+  └─ GET  entityData  423ms  +0ms   15p  12 IDs  [sku]            48KB
+  └─ GET  entityGovernData  389ms  +5ms  8p  12 IDs  [sku]        12KB
+Burst 2  2340ms  entityData×1  48 IDs  ⚠ 1 dup path  sequential  ▼
+```
+
+**Burst header fields:**
+
+| Field | Meaning |
+|---|---|
+| `Nms total` | Sum of all call durations (green < 800ms, amber < 2000ms, red ≥ 2000ms) |
+| `dataIndex×count` | How many calls per endpoint |
+| `N IDs` | Total unique entity IDs across all calls |
+| `parallel` | All calls started within 100ms of each other |
+| `sequential` | Calls spread out > 100ms — later calls waited for earlier ones |
+| `⚠ N dup paths` | N paths also seen in other bursts |
+
+**Call row fields:**
+
+| Field | Meaning |
+|---|---|
+| `GET`/`POST`/`CALL` | Falcor method |
+| `423ms` | Duration (green ≤ 500ms, amber ≤ 1000ms, red > 1000ms) |
+| `+45ms` | Offset from burst start |
+| `15p` | Number of paths in this call |
+| `⚠ 2 dups` | 2 paths also sent in other calls (potential cache miss) |
+| `[sku] [product]` | Entity type pills |
+
+### By DataIndex view
+
+Groups all calls across the session by endpoint, sorted by call count.
+
+```
+entityData        14 calls  · 187 paths · 34 unique IDs  · 4823ms
+entityGovernData   6 calls  · 48 paths  · 34 unique IDs  · 1204ms
+configData         2 calls  · 6 paths   · 2 unique IDs   · 145ms
+```
+
+### Search Sessions view
+
+Links `searchResults.create` CALL entries to their paginated GET entries.
+
+```
+Search 1  requestId: abc123…  3 pages  890ms total
+  └─ CALL  entityData  180ms  — searchResults.create
+  └─ GET   entityData  250ms  — page 0 results
+  └─ GET   entityData  460ms  — page 1 results
+```
+
+---
+
+## The decoded shape
+
+```js
+entry.decoded
+// {
+//   protocol:        "falcor",
+//   method:          "get",
+//   dataIndex:       "entityData",       // from URL: /data/entityData.json
+//   paths:           [[...], [...]],     // full parsed paths array
+//   pathCount:       15,
+//   isBatchGet:      true,
+//   entityTypes:     ["sku"],
+//   entityIds:       ["id1","id2"],
+//   fields:          ["id","name","attributes"],
+//   isSearch:        false,
+//   searchRequestId: null,
+// }
+```
+
+---
+
+## Session analytics
+
+Always visible regardless of active view.
+
+**Entity types:** Each unique entity type with call count.
+
+**Top fields:** The 10 most requested fields with frequency. `attributes 54×` = appeared in 54 paths.
+
+**Duplicate paths:**
+- **Green: "No duplicate paths"** — every path request was unique.
+- **Amber: "N duplicate paths"** — same Falcor path sent in more than one XHR (cache miss). Common causes: multiple components independently requesting same entity, or key-set mismatch.
+
+---
+
+## Filters
+
+**DataIndex dropdown:** Narrows to calls for one endpoint.
+
+**Path search box:** Free-text match against `dataIndex`, `entityTypes`, `fields`, `entityIds`.
+```
+sku           → only calls requesting sku entity types
+attributes    → only calls requesting the attributes field
+entityData    → only entityData endpoint calls
+```
+
+---
+
+## Console commands
+
+```js
+// All Falcor entries
+window.__LDS_NETWORK_LOG__.filter(n => n.decoded?.protocol === 'falcor')
+
+// Grouped by dataIndex
+window.__LDS_NETWORK_LOG__
+  .filter(n => n.decoded?.protocol === 'falcor')
+  .reduce((acc, n) => {
+    const di = n.decoded.dataIndex || 'unknown';
+    acc[di] = (acc[di] || 0) + 1;
+    return acc;
+  }, {})
+// { entityData: 10, entityGovernData: 4 }
+```
+
+---
+
+## Sanity check
+
+```js
+// Confirm FalcorDecoder is working:
+window.__LDS_NETWORK_LOG__.filter(n => n.decoded?.protocol === 'falcor').length
+// 0 → no Falcor calls yet, or FalcorDecoder not registered
+
+// Check what dataIndexes were called:
+[...new Set(
+  window.__LDS_NETWORK_LOG__
+    .filter(n => n.decoded?.protocol === 'falcor')
+    .map(n => n.decoded.dataIndex)
+)]
+```
+
+---
+
+## Limitations
+
+- **Path structure is best-effort.** `entityTypes`, `entityIds`, `fields` require `byIds` segment in path.
+- **Burst grouping is time-based, not causal.** 200ms proximity proxy for "same action".
+- **No server-side fan-out visibility.** What the server does with the request is opaque.
+- **Log cap at 200 entries.** Early calls may be pushed out on heavy pages.
+
+---
+
+## Relationship to other tools
+
+| Tool | How it relates |
+|---|---|
+| Network Monitor | Same `__LDS_NETWORK_LOG__` data. Network = raw view. Falcor = structured Falcor view. |
+| Slow API Monitor | SlowAPI catches component → DataObjectManager slowness. Falcor tab catches DataObjectManager → server slowness. |
+| Workflow Baseline | Baseline captures `networkCount` including Falcor calls. Divergence in count shows up automatically. |
+</script>
+
+<!-- app markup -->
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header" onclick="toggleMobileSidebar()">
+      <div>
+        <div class="sidebar-title">lit-debug-suite</div>
+        <div class="sidebar-subtitle">Runtime Debug Panel</div>
+      </div>
+    </div>
+    <div class="search-wrap">
+      <input class="search-input" type="search" placeholder="Search docs…" id="search" oninput="filterNav(this.value)">
+    </div>
+    <nav class="nav" id="nav">
+      <div class="nav-group">
+        <div class="nav-group-label">Start Here</div>
+        <div class="nav-item" data-id="overview" onclick="show('overview')">Overview</div>
+        <div class="nav-item" data-id="quick-start" onclick="show('quick-start')">Quick Start</div>
+        <div class="nav-item" data-id="pinpoint-tab" onclick="show('pinpoint-tab')">Pinpoint Tab</div>
+        <div class="nav-item" data-id="tool-by-symptom" onclick="show('tool-by-symptom')">Tool by Symptom</div>
+        <div class="nav-item" data-id="troubleshooting" onclick="show('troubleshooting')">Troubleshooting</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Performance</div>
+        <div class="nav-item" data-id="perf-monitor" onclick="show('perf-monitor')">Perf Monitor <span class="flag">__LDS_PERF_ENABLED__</span></div>
+        <div class="nav-item" data-id="vitals" onclick="show('vitals')">Web Vitals <span class="flag">__LDS_VITALS_ENABLED__</span></div>
+        <div class="nav-item" data-id="workflow-baseline" onclick="show('workflow-baseline')">Workflow Baseline</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Memory &amp; Leaks</div>
+        <div class="nav-item" data-id="memory-counters" onclick="show('memory-counters')">Memory Counters <span class="flag">always on</span></div>
+        <div class="nav-item" data-id="resource-tracker" onclick="show('resource-tracker')">Resource Tracker <span class="flag">__LDS_RESOURCE_TRACKER__</span></div>
+        <div class="nav-item" data-id="cycle-detector" onclick="show('cycle-detector')">Cycle Detector <span class="flag">__LDS_CYCLE_DETECT__</span></div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Network</div>
+        <div class="nav-item" data-id="network" onclick="show('network')">Network Monitor <span class="flag">__LDS_NETWORK_ENABLED__</span></div>
+        <div class="nav-item" data-id="falcor-tab" onclick="show('falcor-tab')" style="border-left:2px solid var(--accent);padding-left:14px;color:var(--accent)">Falcor Tab ✦ <span class="flag">__LDS_FALCOR_VIEW__</span></div>
+        <div class="nav-item" data-id="slow-api" onclick="show('slow-api')">Slow API Monitor <span class="flag">__LDS_SLOW_API__</span></div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Components &amp; Events</div>
+        <div class="nav-item" data-id="prop-audit" onclick="show('prop-audit')">Prop Audit <span class="flag">__LDS_PROP_DEBUG__</span></div>
+        <div class="nav-item" data-id="inspector" onclick="show('inspector')">Component Inspector <span class="flag">__LDS_INSPECTOR__</span></div>
+        <div class="nav-item" data-id="event-tracer" onclick="show('event-tracer')">Event Tracer <span class="flag">__LDS_EVENTS_TRACE__</span></div>
+        <div class="nav-item" data-id="console" onclick="show('console')">Console Capture <span class="flag">__LDS_CONSOLE_ENABLED__</span></div>
+      </div>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="topbar-title">Overview</div>
+      <button class="theme-btn" onclick="toggleTheme()" id="theme-btn">☀ Light</button>
+    </div>
+    <div class="content-wrap">
+      <div class="content" id="content"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const docs = {};
+  document.querySelectorAll('script[type="text/x-markdown"]').forEach(el => {
+    docs[el.id.replace('doc-','')] = el.textContent;
+  });
+
+  // theme
+  let theme = (() => { try { return localStorage.getItem('lds-theme') || 'system'; } catch(e) { return 'system'; } })();
+
+  function applyTheme() {
+    if (theme === 'dark') {
+      document.documentElement.setAttribute('data-theme','dark');
+      document.getElementById('theme-btn').textContent = '☀ Light';
+    } else if (theme === 'light') {
+      document.documentElement.setAttribute('data-theme','light');
+      document.getElementById('theme-btn').textContent = '☾ Dark';
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+      const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.getElementById('theme-btn').textContent = dark ? '☀ Light' : '☾ Dark';
+    }
+  }
+
+  window.toggleTheme = function() {
+    if (theme === 'system' || theme === 'light') theme = 'dark';
+    else theme = 'light';
+    try { localStorage.setItem('lds-theme', theme); } catch(e){}
+    applyTheme();
+  };
+
+  applyTheme();
+
+  // active doc
+  let current = (() => { try { return localStorage.getItem('lds-active') || 'overview'; } catch(e) { return 'overview'; } })();
+
+  function setActive(id) {
+    document.querySelectorAll('.nav-item').forEach(el => {
+      if (el.dataset.id === id) el.classList.add('active');
+      else el.classList.remove('active');
+    });
+  }
+
+  window.show = function(id) {
+    if (!docs[id]) return;
+    current = id;
+    try { localStorage.setItem('lds-active', id); } catch(e){}
+
+    // render markdown
+    const renderer = new marked.Renderer();
+    // wrap tables in overflow container
+    renderer.table = function(header, body) {
+      return '<div class="md-table-wrap"><table><thead>' + header + '</thead><tbody>' + body + '</tbody></table></div>';
+    };
+    marked.setOptions({ renderer, breaks: false, gfm: true });
+
+    const html = marked.parse(docs[id]);
+    document.getElementById('content').innerHTML = html;
+    document.getElementById('content-wrap') && document.getElementById('content-wrap').scrollTo(0,0);
+    document.querySelector('.content-wrap').scrollTop = 0;
+
+    // update topbar title — first h1 text
+    const h1 = document.getElementById('content').querySelector('h1');
+    document.getElementById('topbar-title').textContent = h1 ? h1.textContent : id;
+
+    setActive(id);
+
+    // close mobile sidebar
+    document.getElementById('sidebar').classList.remove('open');
+  };
+
+  window.filterNav = function(q) {
+    const query = q.trim().toLowerCase();
+    document.querySelectorAll('.nav-item').forEach(el => {
+      if (!query) { el.classList.remove('hidden'); return; }
+      const id = el.dataset.id;
+      const docText = (docs[id] || '').toLowerCase();
+      const label = el.textContent.toLowerCase();
+      if (label.includes(query) || docText.includes(query)) {
+        el.classList.remove('hidden');
+      } else {
+        el.classList.add('hidden');
+      }
+    });
+  };
+
+  window.toggleMobileSidebar = function() {
+    document.getElementById('sidebar').classList.toggle('open');
+  };
+
+  // initial render
+  show(current);
+})();
+</script>
