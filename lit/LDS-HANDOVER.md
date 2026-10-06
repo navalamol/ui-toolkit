@@ -122,20 +122,21 @@ from the page. Fix: `background.js` now injects `panel.bundle.js` directly via
 not used by the extension. See `ARCHITECTURE.md §5` for full explanation.
 
 ### 2. Wire into Syndigo `ruf-element.js` (optional — for Syndigo app)
-In `src/base/ruf-element.js`, replace the 12 individual `ruf-*.js` imports with:
+In `src/base/ruf-element.js`, replace the 12 individual `ruf-*.js` imports with these **two lines** (the named import from `custom/ui-platform` covers the side-effect plugin init AND provides `attachToElement` — no third import needed):
 ```js
 import { LitDebugMixin } from 'lit-debug-suite';
-import 'lit-debug-suite/custom/ui-platform';
-// Then: class RufElement extends LitDebugMixin(LitElement) { ... }
+import { attachToElement as _ldsAttachAci } from 'lit-debug-suite/custom/ui-platform';
+// Then: class RufElement extends LitDebugMixin(superclass) { ... }
 ```
 
+⚠️ Do **not** import from the deep file path `'lit-debug-suite/custom/ui-platform/AciPlugin.js'` — it is not in the `exports` map and bundlers will reject it.
+
 ### 3. Wire ACI per-element (for Syndigo app)
-In `ruf-element.js` connectedCallback:
+In `ruf-element.js` `connectedCallback` (using `_ldsAttachAci` from the import above):
 ```js
-import { attachToElement } from 'lit-debug-suite/custom/ui-platform';
 connectedCallback() {
   super.connectedCallback();
-  if (this.aci) attachToElement(this);
+  if (this.aci) _ldsAttachAci(this);
 }
 ```
 
@@ -235,8 +236,9 @@ import * as RufSlowApi       from './ruf-slow-api.js';
 **Lines to ADD at the top:**
 ```js
 import { LitDebugMixin } from 'lit-debug-suite';
-import 'lit-debug-suite/custom/ui-platform'; // Falcor + DataObjectManager + ACI + compat aliases
+import { attachToElement as _ldsAttachAci } from 'lit-debug-suite/custom/ui-platform'; // also inits Falcor + SlowApi + compat
 ```
+⚠️ One import covers both the side-effect plugin init and `attachToElement`. Do not add a third import from the deep file path.
 
 **Class definition change** — compose the mixin into the chain:
 
@@ -420,7 +422,7 @@ transition period.
 -import * as RufAciTracer     from './ruf-aci-tracer.js';
 -import * as RufSlowApi       from './ruf-slow-api.js';
 +import { LitDebugMixin } from 'lit-debug-suite';
-+import 'lit-debug-suite/custom/ui-platform';
++import { attachToElement as _ldsAttachAci } from 'lit-debug-suite/custom/ui-platform';
 
 -let RufElement = (superclass) => class extends superclass {
 +let RufElement = (superclass) => class extends LitDebugMixin(superclass) {
@@ -539,6 +541,44 @@ Run on 5 real bugs. If evidence levels don't reduce Claude's false-fix rate vs P
 
 ### Phase 8 kill test (to run)
 Does this measurably reduce "did my fix work?" manual profiler runs? If engineers still open DevTools after using Replay, the feature hasn't earned its place.
+
+---
+
+## Session 2026-10-06 — Phase 9: Resource Lifetime Model + gate.js bug fix
+
+### What was done
+
+**`src/core/gate.js` — bug fix**
+- Removed stray un-commented assignment statements (`window.__LDS_DEBUG__ = true`, `window.__LDS_PERF_ENABLED__ = true`, etc.) that were live code inside `_toolEnabled()`, force-enabling all tools on every call regardless of flags.
+- Added `resourceTracker` key with standalone flag `window.__LDS_RESOURCE_TRACKER__ = true`.
+
+**`src/core/memory.js`**
+- Added `import { _toolEnabled } from './gate.js'`
+- Added **ResourceLedger** data structures: `_ledger` (Map ownerId→resources), `_violations[]`, `_listenerMap` (WeakMap fn→{resourceId,ownerId}), `_elementIds` (WeakMap el→instanceId), `_instanceSeq`, `_resourceSeq`, `_currentOwner`, `_globalPatched`
+- Added `_getInstanceId(el)`, `_registerListener(owner, eventType, target, fn, stack)`, `_disposeListener(fn)`, `_suppressedEvents()`, `_patchGlobalListeners()`
+- `_patchGlobalListeners()` — one-time patch of `window.addEventListener`/`document.addEventListener` that attributes listeners to `_currentOwner` if set; suppresses high-frequency event types (`mousemove`, `pointermove`, `touchmove`, `scroll`, `wheel`, `mouseenter`, `mouseleave`) plus anything in `window.__LDS_SUPPRESS_EVENTS__`
+- Updated `attach(el)`: when `resourceTracker` enabled — calls `_patchGlobalListeners()`, sets `_currentOwner = el`, clears it via `queueMicrotask`, patches `el.addEventListener`/`el.removeEventListener` on the instance (catches `this.addEventListener(...)` patterns)
+- Updated `detach(el)`: when `resourceTracker` enabled — scans ledger for surviving (undisposed) resources, pushes to `_violations`, logs warning, cleans up patched instance methods and ledger entry
+- Exposed `window.__LDS_RESOURCE_VIOLATIONS__` and `window.__LDS_RESOURCE_VIOLATIONS_RESET__()`
+
+**`src/panel/LdsDebugPanel.js`**
+- `_collectReport()` now includes `resourceViolations: window.__LDS_RESOURCE_VIOLATIONS__[...]`
+- `_computeEvidenceLevel()` — added `'resource-outlived-owner'` → `'lifetime-violation'`
+- `_buildPinpointIssues()` — added `resource-outlived-owner` block: groups violations by tag, aggregates unreleased resources, extracts worst creation stack, emits a single finding per tag at `severity: 'high'`, `evidenceLevel: 'lifetime-violation'`
+
+### Key design decisions
+- `_currentOwner` is a single variable (not a stack). Nested synchronous element connections (parent attaches child during connectedCallback) will attribute global listeners to the INNER element. This is an accepted limitation; documented for Phase 9.
+- Per-element instance patching (`el.addEventListener`) is restored in `detach()` via `delete el.addEventListener` (removes the instance shadow, restoring the prototype method).
+- ResourceLedger entries are deleted from `_ledger` in `detach()` to prevent memory growth from the tracker itself.
+- Suppression list defaults exclude high-frequency events that are almost always intentional globals; customisable via `window.__LDS_SUPPRESS_EVENTS__ = [...]`.
+
+### Activation
+```js
+window.__LDS_RESOURCE_TRACKER__ = true;  // or window.__LDS_DEBUG__ = true (enables all)
+```
+
+### Phase 9 kill test (to run)
+Run against a known `window.addEventListener` leak (listener registered in connectedCallback, missing from disconnectedCallback). Finding must name the correct file and line. If false-positive rate on intentional global listeners exceeds 20%, extend the suppression list before shipping.
 
 ---
 

@@ -18,7 +18,8 @@
  *   window.__LDS_CONSOLE_ENABLED__ = true
  *   window.__LDS_VITALS_ENABLED__  = true
  *   window.__LDS_NETWORK_ENABLED__ = true
- *   window.__LDS_CYCLE_DETECT__    = true
+ *   window.__LDS_CYCLE_DETECT__      = true
+ *   window.__LDS_RESOURCE_TRACKER__ = true   // Phase 9 resource lifetime model
  */
 
 function _getDebugFlag() {
@@ -41,7 +42,8 @@ function _toolEnabled(toolKey) {
     if (toolKey === 'console'       && window.__LDS_CONSOLE_ENABLED__)   return true;
     if (toolKey === 'vitals'        && window.__LDS_VITALS_ENABLED__)    return true;
     if (toolKey === 'network'       && window.__LDS_NETWORK_ENABLED__)   return true;
-    if (toolKey === 'cycleDetector' && window.__LDS_CYCLE_DETECT__)      return true;
+    if (toolKey === 'cycleDetector'   && window.__LDS_CYCLE_DETECT__)        return true;
+    if (toolKey === 'resourceTracker' && window.__LDS_RESOURCE_TRACKER__)   return true;
 
     const flag = _getDebugFlag();
     if (!flag) return false;

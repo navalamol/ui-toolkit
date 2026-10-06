@@ -6,13 +6,13 @@
  * is recorded in __LDS_EVENTS_TIMELINE__ / __LDS_EVENTS_FREQ__.
  *
  * Usage — call from element connectedCallback AFTER ACI is initialised:
- *   import { attachToElement } from 'lit-debug-suite/custom/ui-platform/AciPlugin.js';
+ *   import { attachToElement } from 'lit-debug-suite/custom/ui-platform';
  *   connectedCallback() {
  *     super.connectedCallback();
  *     attachToElement(this);
  *   }
  *
- * Or use the auto-wiring exported from custom/ui-platform/index.js.
+ * Do NOT import from the deep file path (e.g. .../AciPlugin.js) — it is not in the exports map.
  */
 
 import { LdsEventTracer } from '../../src/core/event-tracer.js';

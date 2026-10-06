@@ -135,8 +135,9 @@ function _collectReport(note = '') {
         renderReasons:  window.__LDS_RENDER_REASONS__ ? { ...window.__LDS_RENDER_REASONS__ } : null,
         thrash:         [...(window.__LDS_THRASH__ || [])],
         cycles:         [...(window.__LDS_CYCLES__ || [])],
-        mountCycles:    window.__LDS_MOUNT_CYCLES__ ? window.__LDS_MOUNT_CYCLES__.map(c => ({ ...c, counts: { ...c.counts } })) : [],
-        domStats:       _captureDomStats(),
+        mountCycles:       window.__LDS_MOUNT_CYCLES__ ? window.__LDS_MOUNT_CYCLES__.map(c => ({ ...c, counts: { ...c.counts } })) : [],
+        resourceViolations: window.__LDS_RESOURCE_VIOLATIONS__ ? [...window.__LDS_RESOURCE_VIOLATIONS__] : [],
+        domStats:           _captureDomStats(),
     };
 }
 
@@ -236,8 +237,9 @@ function _computeEvidenceLevel(issue, report) {
         case 'memory-leak':     return (issue.observed && issue.observed.leakType === 'progressive-leak') ? 'correlation' : 'observation';
         case 'network-error':   return 'observation';
         case 'property-thrash': return hasLine ? 'attribution' : 'correlation';
-        case 'circular-update': return hasLine ? 'attribution' : 'correlation';
-        default:                return 'observation';
+        case 'circular-update':         return hasLine ? 'attribution' : 'correlation';
+        case 'resource-outlived-owner': return 'lifetime-violation';
+        default:                        return 'observation';
     }
 }
 
@@ -363,6 +365,31 @@ function _buildPinpointIssues(report) {
             recommendation: 'An element\'s updated() or setter is setting a property on a component that eventually sets a property back on it. Break the cycle: use a guard (if this._updating return), memoize values, or restructure data flow so updates are unidirectional.',
             observed: { path: c.path, cycleCount: c.count, triggerProp: c.prop || null } };
         iss.evidenceLevel = _computeEvidenceLevel(iss, report);
+        issues.push(iss);
+    });
+
+    // Resource lifetime violations (Phase 9)
+    const byViolationTag = {};
+    (report.resourceViolations || []).forEach(v => {
+        (byViolationTag[v.ownerTag] = byViolationTag[v.ownerTag] || []).push(v);
+    });
+    Object.entries(byViolationTag).forEach(([tag, violations]) => {
+        const allResources = violations.flatMap(v => v.resources);
+        const byType = {};
+        allResources.forEach(r => { (byType[r.eventType] = byType[r.eventType] || []).push(r); });
+        const summary = Object.entries(byType)
+            .map(([evt, arr]) => `  ${arr.length}× ${evt} (on ${arr[0].target})`)
+            .join('\n');
+        const worstStack = allResources.find(r => r.creationStack)?.creationStack || null;
+        const iss = {
+            id: `rlo-${tag}`, component: tag, filePath: _tagToFilePath(tag),
+            issueType: 'resource-outlived-owner', severity: 'high',
+            details: `<${tag}> disconnected with unreleased listeners across ${violations.length} instance(s):\n${summary}`,
+            callStacks: worstStack ? [worstStack] : [],
+            recommendation: 'Add matching removeEventListener calls in disconnectedCallback for each addEventListener in connectedCallback.',
+            observed: { violationCount: violations.length, resourceCount: allResources.length, eventTypes: Object.keys(byType) },
+        };
+        iss.evidenceLevel = 'lifetime-violation';
         issues.push(iss);
     });
 
