@@ -196,6 +196,68 @@ window.__LDS_DEBUG__ = {
 
 ---
 
+## The Falcor tab shows "No Falcor calls captured yet"
+
+Three possible causes:
+
+**1. `__LDS_NETWORK_ENABLED__` was not set before page load**
+```js
+window.__LDS_NETWORK_ENABLED__ = true;
+// Reload — the XHR patch must be installed before Falcor calls fire
+```
+
+**2. FalcorDecoder is not registered**
+The Falcor tab only shows calls where `decoded.protocol === 'falcor'`. If `FalcorDecoder` is not registered with `LdsNetwork`, all Falcor calls appear in the Network tab as `xhr` type with no decoded data.
+
+Check:
+```js
+// Should return N > 0 after navigating to an entity page:
+window.__LDS_NETWORK_LOG__.filter(n => n.decoded?.protocol === 'falcor').length
+
+// If 0, check if FalcorDecoder is registered:
+// Ensure custom/ui-platform/index.js is imported in your app entry point:
+// import 'lit-debug-suite/custom/ui-platform';
+```
+
+**3. The page doesn't use Falcor**
+Not all pages in the app use Falcor. Config pages, auth pages, and utility pages may use REST endpoints only. Navigate to an entity detail page or search page to trigger Falcor calls.
+
+---
+
+## The Falcor tab shows calls but entityTypes / entityIds / fields are all empty
+
+The path anatomy extraction (`entityTypes`, `entityIds`, `fields`) works by scanning for `byIds` in each path. If the Falcor model for a particular endpoint uses a different path structure without a `byIds` segment, these fields will be empty.
+
+The raw paths are always available — expand any call row → scroll to the "N paths" section to see the full path arrays. Use the console for manual inspection:
+```js
+window.__LDS_NETWORK_LOG__
+  .find(n => n.decoded?.protocol === 'falcor')
+  ?.decoded?.paths
+// Inspect the structure and see which segment contains entity IDs
+```
+
+---
+
+## The Falcor tab shows "parallel" but calls feel sequential
+
+"Parallel" in the burst header means all calls in the burst **started** within 100ms of each other. It does not mean they all finished in parallel — one call may still block UI rendering while its response is processed even if the XHR was sent concurrently.
+
+For true parallelism, check that the burst's `totalMs` ≈ the longest individual call's `durationMs`. If `totalMs` >> longest call, the calls are processing responses sequentially after returning.
+
+---
+
+## The Falcor tab shows duplicate paths but I don't know what to do
+
+A duplicate path means the same Falcor path (the same JSON array) was sent in two separate XHRs. The most common causes:
+
+- **Two components independently requesting the same entity.** Each component calls `FalcorManager.get()` with the same entity ID without knowing the other already requested it. Fix: share the data request through a common service or use a component that already has the data.
+- **Navigation pattern.** User navigated away and back — the second visit re-fetched everything. If Falcor's client model is not persisted across navigations, this is expected.
+- **Batch splitting.** A large path set was split into multiple XHRs by the batch scheduler. In this case the paths appear in separate calls not by mistake but by design (batch size limit).
+
+Check whether the duplicate paths appear in the same burst (suspect: over-requesting) or in separate bursts (expected: separate user actions).
+
+---
+
 ## I don't see the slow-render badge in the Perf tab
 
 The 🔥 badge appears only when there is a matching entry in `__LDS_SLOW_RENDERS__` — which requires a render over **500ms** with a stack trace captured.

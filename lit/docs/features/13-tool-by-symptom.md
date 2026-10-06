@@ -69,6 +69,26 @@ Also check: **Console tab** — `console.error` from failed fetches is captured 
 **Tool:** [Slow API Monitor](05-slow-api.md) `__LDS_SLOW_API__`  
 Note: Network Monitor measures time-to-response. Slow API Monitor measures time-to-component-render — it catches cases where the data arrives quickly but the component takes a long time to process it.
 
+### "There are too many identical Falcor calls and I can't tell them apart"
+**Tool:** [Falcor Tab](15-falcor-tab.md) `__LDS_NETWORK_ENABLED__` + `__LDS_FALCOR_VIEW__`  
+**Tab:** Falcor → Grouped view  
+**What to look for:** Burst groups — one group = one user action. Within each group, check `dataIndex×count` to see how many calls went to each endpoint, and expand a call to see the entity types, IDs, and fields requested.
+
+### "I think the app is re-fetching the same Falcor data unnecessarily"
+**Tool:** [Falcor Tab](15-falcor-tab.md)  
+**Tab:** Falcor → analytics footer  
+**What to look for:** "N duplicate paths detected" warning. Expand affected calls → paths labelled `DUP` in orange are being requested multiple times. Check whether different components are independently requesting the same entities without a shared cache.
+
+### "A Falcor operation is slow — I want to understand why"
+**Tools:**
+1. [Falcor Tab](15-falcor-tab.md) → Grouped view — is the slow burst `sequential`? (Calls waited for each other, suggesting a dependent pipeline.) Or `parallel`? (All fired at once — server-side or network latency is the cause.)
+2. [Slow API Monitor](05-slow-api.md) → SlowAPI tab — is the slowness in `initiateRequest()` before the XHR fires, or in the XHR itself?
+
+### "I want to understand a search session end-to-end"
+**Tool:** [Falcor Tab](15-falcor-tab.md)  
+**Tab:** Falcor → Search Sessions view  
+**What to look for:** One session per search action. The CALL (searchResults.create) initiates the search; subsequent GETs load each page of results. Compare CALL duration vs GET durations to know whether the bottleneck is search execution or data loading.
+
 ---
 
 ## Rendering / update problems

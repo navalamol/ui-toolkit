@@ -130,6 +130,23 @@ In practice, `responseSizeKB` is `null` or 0 for most modern API responses. It's
 
 ---
 
+## Falcor calls: use the Falcor tab instead
+
+If your app uses the Syndigo Falcor integration (`custom/ui-platform`), Falcor calls appear in the Network tab decoded but still as flat rows — you can't see which entity types or IDs were requested, why there are 10 identical `entityData` calls, or how they relate to each other.
+
+For Falcor, the **Falcor tab** provides a purpose-built view: burst grouping (one user action = one group), path anatomy (entity types, IDs, fields per call), duplicate path detection, and search session linking.
+
+```js
+// Enable both:
+window.__LDS_NETWORK_ENABLED__ = true;  // provides the data
+window.__LDS_FALCOR_VIEW__ = true;      // shows Falcor tab
+// reload → navigate → open panel → Falcor tab
+```
+
+See [15 — Falcor Tab](15-falcor-tab.md) for full documentation.
+
+---
+
 ## What can improve
 
 1. **Configurable thresholds.** `window.__LDS_NETWORK_SLOW_MS__` and `window.__LDS_NETWORK_LARGE_KB__` analogous to `__LDS_SLOW_API_MS__`.

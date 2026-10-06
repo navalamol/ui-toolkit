@@ -54,6 +54,16 @@ The master flag is checked by `gate.js`. Each per-tool standalone flag (below) w
 
 > Tool 12 (memory counters) is always active when the mixin is installed. No flag required.
 
+### Syndigo extension: Falcor tab
+
+The **Falcor tab** is a Syndigo-specific extension (not part of the generic core). It reads from the same `__LDS_NETWORK_LOG__` as the Network tab but adds Falcor-specific decoding: path anatomy, burst grouping, dataIndex breakdown, duplicate detection, and search session linking.
+
+| Flag | Source | What it does | Panel tab |
+|------|--------|--------------|-----------|
+| `__LDS_FALCOR_VIEW__` (+ `__LDS_NETWORK_ENABLED__`) | `custom/ui-platform/FalcorDecoder.js` | Falcor call grouping, path anatomy, duplicate detection | **Falcor** |
+
+See [15 — Falcor Tab](15-falcor-tab.md) for full documentation.
+
 ---
 
 ## The panel
@@ -178,3 +188,4 @@ Each element that uses `LitDebugMixin` is tracked through:
 - [10 — Resource Tracker](10-resource-tracker.md) `__LDS_RESOURCE_TRACKER__` *(no panel tab — Pinpoint)*
 - [11 — Workflow Baseline](11-workflow-baseline.md) `__LDS_WORKFLOW_BASELINE__`
 - [12 — Memory Counters](12-memory-counters.md) *(always on)*
+- [15 — Falcor Tab](15-falcor-tab.md) `__LDS_FALCOR_VIEW__` *(Syndigo extension — requires `__LDS_NETWORK_ENABLED__`)*

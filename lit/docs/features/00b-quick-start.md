@@ -54,7 +54,7 @@ Navigate to the problem area. Reproduce the behavior you're investigating. The t
 Click the **🐞 badge** in the bottom-right corner of the page.
 
 ```
-Summary · Pinpoint · Vitals · Network · Perf · Errors · Console · Events · SlowAPI · Memory · History · Env
+Summary · Pinpoint · Vitals · Network · Falcor · Perf · Errors · Console · Events · SlowAPI · Memory · History · Env
 ```
 
 **Which tab to open first:**
@@ -64,6 +64,8 @@ Summary · Pinpoint · Vitals · Network · Perf · Errors · Console · Events 
 | Slow initial load | **Perf** tab |
 | Memory growing over time | **Memory** tab |
 | Network failures or slowness | **Network** tab |
+| Too many / slow Falcor calls | **Falcor** tab (requires `__LDS_NETWORK_ENABLED__`) |
+| Duplicate Falcor data fetches | **Falcor** tab → analytics footer for dup path count |
 | LCP / CLS / INP score | **Vitals** tab |
 | Console errors | **Console** tab |
 | Event bus behaviour | **Events** tab |
@@ -90,6 +92,11 @@ Click **Export Fix Table** to download the structured JSON. Paste it — or the 
 ## Enabling multiple tools at once
 
 ```js
+// For Falcor investigation (Syndigo-specific):
+window.__LDS_NETWORK_ENABLED__ = true;   // captures XHR/fetch
+window.__LDS_FALCOR_VIEW__ = true;       // shows Falcor tab
+// reload → navigate to entity page → open 🐞 → Falcor tab
+
 // Selective master flag — enables only the named tools
 window.__LDS_DEBUG__ = {
   perf:           true,
