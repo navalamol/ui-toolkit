@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createEvidenceCapsule } from '../../src/core/evidence-capsule.js';
+import { createEvidenceCapsule, MAX_EXPORTED_EVIDENCE_REFERENCES } from '../../src/core/evidence-capsule.js';
 
 const incident = Object.freeze({
   triggerEventId:'err', triggerSequence:2, reason:'runtime-error',
@@ -40,4 +40,30 @@ test('Evidence Capsule prompt preserves evidence-honesty instruction', () => {
   const capsule = createEvidenceCapsule({ id:'c', problem:{title:'slow edit'}, incident });
   assert.match(capsule.aiPrompt, /do not promote correlation to causality/i);
   assert.equal(capsule.trigger.eventId, 'err');
+});
+
+test('Evidence Capsule bounds duplicated forensic references while preserving total event count', () => {
+  const events = Object.freeze(Array.from({ length: 100 }, (_, index) => Object.freeze({
+    id: `e-${index + 1}`,
+    sequence: index + 1,
+    timestamp: index + 1,
+    type: 'diagnostic',
+    owner: Object.freeze({ id: 'owner-1', name: 'Grid' }),
+    evidence: Object.freeze({ level: 'observation', attribution: 'unknown', confidence: null }),
+    correlation: Object.freeze({ traceId: null, interactionId: null, parentEventId: null, causedByEventId: null }),
+    payload: Object.freeze({ large: 'not-exported' }),
+  })));
+  const largeIncident = Object.freeze({
+    triggerEventId: 'e-100',
+    triggerSequence: 100,
+    reason: 'runtime-error',
+    events,
+  });
+
+  const capsule = createEvidenceCapsule({ id:'bounded', problem:{title:'bounded'}, incident:largeIncident });
+  assert.equal(capsule.evidence.eventCount, 100);
+  assert.equal(capsule.evidence.references.length, MAX_EXPORTED_EVIDENCE_REFERENCES);
+  assert.equal(capsule.evidence.eventIds.length, MAX_EXPORTED_EVIDENCE_REFERENCES);
+  assert.equal(capsule.evidence.omittedReferences, 100 - MAX_EXPORTED_EVIDENCE_REFERENCES);
+  assert.equal(capsule.evidence.eventIds.at(-1), 'e-100');
 });

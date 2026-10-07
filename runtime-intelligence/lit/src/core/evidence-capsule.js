@@ -6,6 +6,9 @@ import {
 } from './enterprise-privacy.js';
 
 const EVIDENCE_CAPSULE_SCHEMA_VERSION = '1.0';
+const MAX_EXPORTED_EVIDENCE_REFERENCES = 40;
+const MAX_ROOT_SYMPTOMS = 20;
+const MAX_ROOT_CANDIDATES = 10;
 
 function _portableClone(value, memo = new WeakMap(), stack = new WeakSet()) {
   if (value === null || typeof value !== 'object') return value;
@@ -74,14 +77,18 @@ function _sourceSummary(source) {
 
 function _rootSummary(rootCause) {
   if (!rootCause) return null;
+  const symptoms = Array.isArray(rootCause.symptoms) ? rootCause.symptoms : [];
+  const candidates = Array.isArray(rootCause.candidates) ? rootCause.candidates : [];
   return {
     clusterId: rootCause.id || null,
     strength: rootCause.strength || null,
     rootEventId: rootCause.rootEventId || null,
     rootLabel: rootCause.rootLabel || null,
     score: Number.isFinite(rootCause.score) ? rootCause.score : null,
-    symptoms: _portableClone(rootCause.symptoms || []),
-    candidates: _portableClone(rootCause.candidates || []),
+    symptoms: _portableClone(symptoms.slice(0, MAX_ROOT_SYMPTOMS)),
+    omittedSymptoms: Math.max(0, symptoms.length - MAX_ROOT_SYMPTOMS),
+    candidates: _portableClone(candidates.slice(0, MAX_ROOT_CANDIDATES)),
+    omittedCandidates: Math.max(0, candidates.length - MAX_ROOT_CANDIDATES),
   };
 }
 
@@ -111,11 +118,16 @@ function createEvidenceCapsule({
   environment = {},
   aiPrompt = null,
   privacyPolicy = ENTERPRISE_SAFE_PRIVACY_POLICY,
+  maxEvidenceReferences = MAX_EXPORTED_EVIDENCE_REFERENCES,
 } = {}) {
   if (!id) throw new TypeError('Evidence Capsule requires id.');
   if (!problem) throw new TypeError('Evidence Capsule requires problem.');
 
   const events = Array.isArray(incident?.events) ? incident.events : [];
+  const referenceLimit = Number.isFinite(maxEvidenceReferences)
+    ? Math.max(1, Math.floor(maxEvidenceReferences))
+    : MAX_EXPORTED_EVIDENCE_REFERENCES;
+  const referencedEvents = events.slice(-referenceLimit);
   const raw = {
     schema: 'RUF Evidence Capsule',
     schemaVersion: EVIDENCE_CAPSULE_SCHEMA_VERSION,
@@ -132,10 +144,12 @@ function createEvidenceCapsule({
     evidence: {
       eventCount: events.length,
       payloadsIncluded: false,
-      references: events.map(_eventReference),
+      references: referencedEvents.map(_eventReference),
+      eventIds: referencedEvents.map(event => event?.id || null).filter(Boolean),
+      omittedReferences: Math.max(0, events.length - referencedEvents.length),
     },
     rootCause: _rootSummary(rootCause),
-    causalChain: _portableClone(causalChain),
+    causalChain: _portableClone(Array.isArray(causalChain) ? causalChain.slice(-20) : []),
     attribution: _portableClone(attribution || (source?.attributionQuality ? {
       quality: source.attributionQuality,
       confidence: source.confidence ?? null,
@@ -167,6 +181,7 @@ function createEvidenceCapsule({
 
 export {
   EVIDENCE_CAPSULE_SCHEMA_VERSION,
+  MAX_EXPORTED_EVIDENCE_REFERENCES,
   createEvidenceCapsule,
   buildEvidenceCapsuleAIPrompt,
 };

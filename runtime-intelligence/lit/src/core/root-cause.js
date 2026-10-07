@@ -30,8 +30,6 @@ function _reachable(graph, id) {
   return graph.descendants(id, { relations: [
     EdgeRelation.CAUSES,
     EdgeRelation.PARENT,
-    EdgeRelation.INTERACTION_CONTEXT,
-    EdgeRelation.TRACE_CONTEXT,
   ] });
 }
 

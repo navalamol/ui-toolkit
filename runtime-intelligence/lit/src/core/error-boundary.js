@@ -15,6 +15,8 @@
  *   automatically. The user sees a brief banner; support gets the data.
  */
 
+import { recordLegacyLitError } from '../integration/lit/legacy-collector-bridge.js';
+
 const _errors = [];
 
 if (typeof window !== 'undefined') {
@@ -124,6 +126,8 @@ function _record(el, err, phase) {
         ts:      new Date().toISOString(),
     };
     _errors.push(entry);
+
+    try { recordLegacyLitError(el, entry, err); } catch (_) {}
 
     console.error(
         `%c[LdsErrorBoundary] <${entry.tag}> crashed in "${phase}"`,

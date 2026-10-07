@@ -16,6 +16,7 @@ export { _toolEnabled, _getDebugFlag } from './core/gate.js';
 export { FrameworkAdapter }    from './adapter/FrameworkAdapter.js';
 export { LitAdapter, litAdapter } from './adapter/lit/LitAdapter.js';
 export { ReactAdapter, reactAdapter } from './adapter/react/ReactAdapter.js';
+export { LitIntelligencePipeline, getLitIntelligencePipeline } from './integration/lit/LitIntelligencePipeline.js';
 export { EvidenceStore, evidenceStore } from './core/evidence-store.js';
 export { EdgeRelation, EvidenceGraph } from './core/evidence-graph.js';
 export { RootCauseGrouper } from './core/root-cause.js';

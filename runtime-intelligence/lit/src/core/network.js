@@ -20,6 +20,7 @@ const LARGE_KB    = 512;
 const MAX_ENTRIES = 200;
 
 const _log = [];
+const _subscribers = new Set();
 let _initialized = false;
 let _decoder = null;
 
@@ -27,9 +28,18 @@ function registerDecoder(fn) {
     _decoder = fn;
 }
 
+function subscribe(fn) {
+    if (typeof fn !== 'function') throw new TypeError('LdsNetwork.subscribe requires a function');
+    _subscribers.add(fn);
+    return () => _subscribers.delete(fn);
+}
+
 function _push(entry) {
     _log.push(entry);
     if (_log.length > MAX_ENTRIES) _log.shift();
+    for (const subscriber of _subscribers) {
+        try { subscriber(entry); } catch { /* diagnostics must never break network runtime */ }
+    }
 }
 
 function _shortUrl(raw) {
@@ -140,5 +150,5 @@ function init() {
 
 function detach() {} // page-level, no per-element cleanup
 
-const LdsNetwork = { init, detach, registerDecoder };
+const LdsNetwork = { init, detach, registerDecoder, subscribe };
 export { LdsNetwork };

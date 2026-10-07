@@ -18,6 +18,17 @@ export default [
         },
         plugins: [nodeResolve()],
     },
+    // Panel remains a separate, opt-in entry point so browser UI code does not
+    // enter the root runtime-intelligence barrel.
+    {
+        input: 'src/panel/LdsDebugPanel.js',
+        external: [/^lit(?:\/|$)/],
+        output: {
+            file: 'lib/panel/LdsDebugPanel.js',
+            format: 'esm',
+        },
+        plugins: [nodeResolve()],
+    },
     // Main Platform / Syndigo-specific integration remains a first-class build.
     {
         input: 'custom/ui-platform/index.js',

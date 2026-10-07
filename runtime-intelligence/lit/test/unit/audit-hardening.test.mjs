@@ -10,6 +10,7 @@ import { EdgeRelation, EvidenceGraph } from '../../src/core/evidence-graph.js';
 import { RootCauseGrouper } from '../../src/core/root-cause.js';
 import { IncidentFlightRecorder, RecorderState } from '../../src/core/incident-flight-recorder.js';
 import { RuntimeResourceOwnershipLedger } from '../../src/core/resource-ownership-ledger.js';
+import { _toolEnabled } from '../../src/core/gate.js';
 
 function graphEvent(id, sequence, type, {
   ownerId = 'owner-a',
@@ -45,6 +46,57 @@ test('structural parent edges never upgrade cluster evidence strength', () => {
   assert.equal(edge.relation, EdgeRelation.PARENT);
   assert.equal(edge.evidence.level, EvidenceLevel.CORRELATION);
   assert.equal(new RootCauseGrouper().group(graph)[0].strength, 'correlated');
+});
+
+test('context-only edges do not inflate root-cause reachability', () => {
+  const interaction = Object.freeze({
+    ...graphEvent('i', 1, RuntimeEventType.INTERACTION),
+    correlation: Object.freeze({ interactionId: 'edit' }),
+  });
+  const state = Object.freeze({
+    ...graphEvent('s', 2, RuntimeEventType.STATE_CHANGED, { level: EvidenceLevel.ATTRIBUTION }),
+    correlation: Object.freeze({ interactionId: 'edit', causedByEventId: 'i' }),
+    payload: Object.freeze({ property: 'value' }),
+  });
+  const request = Object.freeze({
+    ...graphEvent('r', 3, RuntimeEventType.UPDATE_REQUESTED, { level: EvidenceLevel.ATTRIBUTION }),
+    correlation: Object.freeze({ interactionId: 'edit', causedByEventId: 's' }),
+  });
+  const symptomA = Object.freeze({
+    ...graphEvent('n1', 4, RuntimeEventType.NETWORK_COMPLETED),
+    correlation: Object.freeze({ interactionId: 'edit' }),
+  });
+  const symptomB = Object.freeze({
+    ...graphEvent('n2', 5, RuntimeEventType.BROWSER_FRAME),
+    correlation: Object.freeze({ interactionId: 'edit' }),
+  });
+
+  const cluster = new RootCauseGrouper().group(
+    new EvidenceGraph([interaction, state, request, symptomA, symptomB]),
+  )[0];
+
+  assert.equal(cluster.rootEventId, 's');
+});
+
+test('diagnostic gate is SSR-safe and does not force-enable tools', () => {
+  const previousWindow = globalThis.window;
+  try {
+    delete globalThis.window;
+    assert.equal(_toolEnabled('perf'), false);
+
+    globalThis.window = {};
+    assert.equal(_toolEnabled('perf'), false);
+    assert.equal(globalThis.window.__LDS_PERF_ENABLED__, undefined);
+    assert.equal(globalThis.window.__LDS_PROP_DEBUG__, undefined);
+    assert.equal(globalThis.window.__LDS_RESOURCE_TRACKER__, undefined);
+
+    globalThis.window.__LDS_NETWORK_ENABLED__ = true;
+    assert.equal(_toolEnabled('network'), true);
+    assert.equal(_toolEnabled('perf'), false);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
 });
 
 test('EvidenceStore keeps a finite default bound when maxEntries is NaN', () => {
