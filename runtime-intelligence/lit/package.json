@@ -1,0 +1,50 @@
+{
+  "name": "lit-debug-suite",
+  "version": "1.0.0",
+  "description": "Runtime intelligence and diagnostics foundation with framework adapters for Lit and React.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": {
+      "import": "./src/index.js"
+    },
+    "./adapter/lit": {
+      "import": "./src/adapter/lit/LitAdapter.js"
+    },
+    "./adapter/react": {
+      "import": "./src/adapter/react/ReactAdapter.js"
+    },
+    "./custom/ui-platform": {
+      "import": "./custom/ui-platform/index.js"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/unit/*.test.mjs",
+    "test:smoke": "node -e \"import('./src/index.js').then(m=>{if(!m.EvidenceStore||!m.LitAdapter||!m.ReactAdapter)process.exit(1)})\"",
+    "build:lib": "rollup -c rollup.lib.config.js",
+    "build": "npm run test && npm run test:smoke && npm run build:lib"
+  },
+  "keywords": [
+    "runtime-intelligence",
+    "diagnostics",
+    "lit",
+    "react",
+    "performance",
+    "web-components",
+    "devtools"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "lit": ">=3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "lit": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-terser": "^0.4.0",
+    "rollup": "^4.0.0"
+  }
+}
