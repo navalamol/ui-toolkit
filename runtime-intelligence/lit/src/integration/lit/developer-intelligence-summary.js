@@ -82,9 +82,14 @@ function createDeveloperIntelligenceSummary({ triggerEvent, incident, rootCause,
         ? `${ownerName} rendered slowly${Number.isFinite(durationMs) ? ` (${Math.round(durationMs)} ms)` : ''}`
         : `${ownerName} hit a runtime error${triggerEvent.payload?.message ? `: ${triggerEvent.payload.message}` : ''}`;
 
+    const _strength = rootCause?.strength || 'correlated';
     const likelyCause = rootLabel
-        ? `${rootLabel} is the strongest related cause found before this problem.`
-        : 'The problem was captured, but there is not enough trustworthy evidence yet to name a root cause.';
+        ? _strength === 'confirmed'
+            ? `${rootLabel} caused this problem — causality confirmed.`
+            : _strength === 'attributed'
+                ? `${rootLabel} is a likely contributor — strong evidence links it to this problem.`
+                : `${rootLabel} was the strongest signal active before this problem. This is a correlation, not a confirmed cause.`
+        : 'The problem was captured, but there is not enough evidence yet to identify a contributor.';
 
     const nextAction = source
         ? `Start at ${source}${rootLabel ? ` and inspect ${rootLabel}` : ''}.`

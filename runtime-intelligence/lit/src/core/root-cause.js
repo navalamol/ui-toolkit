@@ -26,22 +26,32 @@ const _attributedOrHigher = new Set([
   EvidenceLevel.CAUSALITY_CONFIRMED,
 ]);
 
-function _reachable(graph, id) {
-  return graph.descendants(id, { relations: [
-    EdgeRelation.CAUSES,
-    EdgeRelation.PARENT,
-  ] });
+function _causesReachable(graph, id) {
+  return graph.descendants(id, { relations: [EdgeRelation.CAUSES] });
+}
+
+function _structuralReachable(graph, id) {
+  return graph.descendants(id, { relations: [EdgeRelation.PARENT] });
 }
 
 function _candidateScore(graph, event, componentIds) {
-  const descendants = _reachable(graph, event.id).filter(item => componentIds.has(item.id));
+  const causalDesc = _causesReachable(graph, event.id).filter(item => componentIds.has(item.id));
+  const structDesc = _structuralReachable(graph, event.id).filter(item => componentIds.has(item.id));
   const causalOut = graph.outgoing(event.id).filter(edge => edge.relation === EdgeRelation.CAUSES).length;
   const incomingCausal = graph.incoming(event.id).filter(edge => edge.relation === EdgeRelation.CAUSES).length;
-  const symptomReach = descendants.filter(item => _symptomTypes.has(item.type)).length;
+  const symptomReach = causalDesc.filter(item => _symptomTypes.has(item.type)).length;
   const evidenceBonus = event.evidence?.level === EvidenceLevel.CAUSALITY_CONFIRMED ? 6
     : event.evidence?.level === EvidenceLevel.ATTRIBUTION ? 3
     : event.evidence?.level === EvidenceLevel.CORRELATION ? 1 : 0;
-  return (_rootTypeWeight[event.type] || 0) + descendants.length + (causalOut * 2) + (symptomReach * 2) + evidenceBonus - (incomingCausal * 2);
+  // Structural ancestry (PARENT edges) is discounted heavily — tree position is not causation.
+  // Explicit CAUSES reachability carries modest additive weight; the bigger signal is causalOut.
+  return (_rootTypeWeight[event.type] || 0)
+    + causalDesc.length
+    + Math.floor(structDesc.length * 0.1)
+    + (causalOut * 3)
+    + (symptomReach * 2)
+    + evidenceBonus
+    - (incomingCausal * 2);
 }
 
 function _clusterStrength(graph, componentIds) {

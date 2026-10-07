@@ -53,6 +53,12 @@ function _infoCard(title, body, tone = 'blue') {
     `;
 }
 
+function _causeLabel(confidence) {
+    if (confidence === 'Confirmed') return 'Confirmed cause';
+    if (confidence === 'High confidence') return 'Likely cause';
+    return 'Strongest signal';
+}
+
 function _renderFinding(model) {
     if (!model || model.status === 'ready') {
         return html`
@@ -72,7 +78,7 @@ function _renderFinding(model) {
                 <span style="font-size:9px;padding:2px 7px;border:1px solid #45475a;border-radius:999px;color:#bac2de;white-space:nowrap;">${model.confidence || 'Possible'}</span>
             </div>
             ${model.problem ? html`<div style="margin-bottom:7px;"><strong style="color:#89b4fa;">Problem</strong><div style="margin-top:2px;color:#cdd6f4;">${model.problem}</div></div>` : ''}
-            ${model.likelyCause ? html`<div style="margin-bottom:7px;"><strong style="color:#89b4fa;">Likely cause</strong><div style="margin-top:2px;color:#cdd6f4;">${model.likelyCause}</div></div>` : ''}
+            ${model.likelyCause ? html`<div style="margin-bottom:7px;"><strong style="color:#89b4fa;">${_causeLabel(model.confidence)}</strong><div style="margin-top:2px;color:#cdd6f4;">${model.likelyCause}</div></div>` : ''}
             ${model.source ? html`<div style="margin-bottom:7px;"><strong style="color:#89b4fa;">Where</strong><div style="margin-top:2px;color:#cdd6f4;overflow-wrap:anywhere;">${model.source}</div></div>` : ''}
             ${Array.isArray(model.impact) && model.impact.length ? html`<div style="margin-bottom:7px;"><strong style="color:#89b4fa;">Impact</strong><div style="margin-top:2px;color:#cdd6f4;">${model.impact.join(' · ')}</div></div>` : ''}
             ${model.nextAction ? html`<div style="margin-bottom:7px;"><strong style="color:#a6e3a1;">Do next</strong><div style="margin-top:2px;color:#cdd6f4;">${model.nextAction}</div></div>` : ''}
@@ -200,23 +206,8 @@ function _patchPanelClass(target) {
         return originalRenderContent?.apply(this, args);
     };
 
-    const originalCompleteReplay = proto._completeReplay;
-    if (typeof originalCompleteReplay === 'function') {
-        proto._completeReplay = function (...args) {
-            const result = originalCompleteReplay.apply(this, args);
-            const comparison = this._replayState?.comparison;
-            if (this._replayState?.status === 'done' && comparison) {
-                target.__LDS_INTELLIGENCE_PIPELINE__?.recordVerification?.({
-                    source: 'panel-replay',
-                    outcome: comparison.overallVerified ? 'confirmed' : 'not-confirmed',
-                    confirmed: comparison.overallVerified === true,
-                    metrics: comparison.metrics || [],
-                    comparedAt: comparison.comparedAt || new Date().toISOString(),
-                });
-            }
-            return result;
-        };
-    }
+    // Verification feedback is now handled via the lds-replay-complete CustomEvent
+    // dispatched from LdsDebugPanel._completeReplay() — no private method patching needed.
 
     Object.defineProperty(proto, '__ldsIntelligencePresentationPatched', {
         value: true,
@@ -242,6 +233,18 @@ function installLitIntelligencePanelPresentation({ target = typeof window !== 'u
             const panels = target.document?.querySelectorAll?.('lds-debug-panel') || [];
             for (const panel of panels) {
                 if (panel._tab === INTELLIGENCE_TAB_KEY) panel.requestUpdate?.();
+            }
+        });
+        target.addEventListener?.('lds-replay-complete', (e) => {
+            const { comparison, status } = e.detail || {};
+            if (status === 'done' && comparison) {
+                target.__LDS_INTELLIGENCE_PIPELINE__?.recordVerification?.({
+                    source: 'panel-replay',
+                    outcome: comparison.overallVerified ? 'confirmed' : 'not-confirmed',
+                    confirmed: comparison.overallVerified === true,
+                    metrics: comparison.metrics || [],
+                    comparedAt: comparison.comparedAt || new Date().toISOString(),
+                });
             }
         });
     }

@@ -1179,6 +1179,11 @@ class LdsDebugPanel extends LitElement {
         this._replayState = { ...this._replayState, status: 'done', endSnap, comparison: comp };
         if (comp) this._verifiedIssues = { ...this._verifiedIssues, [this._replayState.issueId]: { comparison: comp, verifiedAt: comp.comparedAt } };
         this.requestUpdate();
+        this.dispatchEvent(new CustomEvent('lds-replay-complete', {
+            detail: { comparison: comp, status: 'done' },
+            bubbles: true,
+            composed: true,
+        }));
     }
 
     _cancelReplay() {

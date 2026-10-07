@@ -36,13 +36,15 @@ export {
     createEvidenceCapsule,
     buildEvidenceCapsuleAIPrompt,
 } from './core/evidence-capsule.js';
-export {
-    RESOURCE_LEDGER_SCHEMA_VERSION,
-    ResourceStatus,
-    ResourceFindingKind,
-    RuntimeResourceKind,
-    RuntimeResourceOwnershipLedger,
-} from './core/resource-ownership-ledger.js';
+// DEFERRED — moved to src/future/resource-ownership-ledger.js
+// Reconnect when memory.js emits RESOURCE_ACQUIRED/RESOURCE_RELEASED UREP events.
+// export {
+//     RESOURCE_LEDGER_SCHEMA_VERSION,
+//     ResourceStatus,
+//     ResourceFindingKind,
+//     RuntimeResourceKind,
+//     RuntimeResourceOwnershipLedger,
+// } from './core/resource-ownership-ledger.js';
 export {
     PRIVACY_POLICY_VERSION,
     PrivacyAction,
@@ -54,18 +56,21 @@ export {
     sanitizeForExport,
     sanitizeForExportWithAudit,
 } from './core/enterprise-privacy.js';
-export {
-    POLICY_ENGINE_SCHEMA_VERSION,
-    RuleKind,
-    BudgetOperator,
-    Severity,
-    RuleEvaluationStatus,
-    createBudgetRule,
-    createSuppression,
-    createEventCountMetrics,
-    evaluateBudgetRule,
-    DiagnosticPolicyEngine,
-} from './core/diagnostic-policy.js';
+// ARCHIVED — moved to src/archive/diagnostic-policy.js
+// Over-abstracted gate; no current caller in the intelligence pipeline.
+// Reconnect if dynamic per-tool budget rules become a real product requirement.
+// export {
+//     POLICY_ENGINE_SCHEMA_VERSION,
+//     RuleKind,
+//     BudgetOperator,
+//     Severity,
+//     RuleEvaluationStatus,
+//     createBudgetRule,
+//     createSuppression,
+//     createEventCountMetrics,
+//     evaluateBudgetRule,
+//     DiagnosticPolicyEngine,
+// } from './core/diagnostic-policy.js';
 export {
     SCHEMA_VERSION as EVIDENCE_SCHEMA_VERSION,
     EvidenceLevel,

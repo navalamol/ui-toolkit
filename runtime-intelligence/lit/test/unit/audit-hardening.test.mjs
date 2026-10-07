@@ -9,7 +9,8 @@ import { EvidenceStore } from '../../src/core/evidence-store.js';
 import { EdgeRelation, EvidenceGraph } from '../../src/core/evidence-graph.js';
 import { RootCauseGrouper } from '../../src/core/root-cause.js';
 import { IncidentFlightRecorder, RecorderState } from '../../src/core/incident-flight-recorder.js';
-import { RuntimeResourceOwnershipLedger } from '../../src/core/resource-ownership-ledger.js';
+// DEFERRED — RuntimeResourceOwnershipLedger moved to src/future/; full tests in test/unit/future/
+// import { RuntimeResourceOwnershipLedger } from '../../src/core/resource-ownership-ledger.js';
 import { _toolEnabled } from '../../src/core/gate.js';
 
 function graphEvent(id, sequence, type, {
@@ -132,54 +133,33 @@ test('IncidentFlightRecorder fails safe for NaN bounds and post-trigger counts',
   assert.equal(incident.eventCount, 1);
 });
 
-function owner(id, generation = 1) {
-  return Object.freeze({ id, name: id, kind: 'component', lifecycleGeneration: generation });
-}
+// DEFERRED — resource ledger tests moved to test/unit/future/resource-ownership-ledger.test.mjs
+// function owner(id, generation = 1) { ... }
+// function resourceEvent(...) { ... }
+// test('resource identity is isolated by owner lifecycle even when resource ids collide', ...)
+// test('resource ledger normalizes NaN memory bounds instead of disabling pruning', ...)
 
-function resourceEvent(id, sequence, type, eventOwner, resourceId = null) {
-  return Object.freeze({
-    id,
-    sequence,
-    timestamp: sequence,
-    type,
-    framework: Object.freeze({ name: 'lit' }),
-    owner: eventOwner,
-    source: null,
-    evidence: Object.freeze({
-      level: EvidenceLevel.OBSERVATION,
-      attribution: AttributionQuality.DETERMINISTIC,
-      confidence: 1,
-    }),
-    payload: Object.freeze(resourceId ? { resourceId, resourceType: 'timeout' } : {}),
+test('causality-confirmed edge produces confirmed cluster strength', () => {
+  // Edge evidence level is derived from the TARGET event (the one with causedByEventId).
+  // So e2 must carry CAUSALITY_CONFIRMED to make the CAUSES edge confirmed.
+  const store = new EvidenceStore({ maxEntries: 20, privacyPolicy: false, clock: () => 1 });
+  const e1 = store.emit({
+    type: RuntimeEventType.STATE_CHANGED,
+    framework: { name: 'test' },
+    owner: { id: 'o1', name: 'Alpha', lifecycleGeneration: 1 },
+    evidence: { level: EvidenceLevel.OBSERVATION, attribution: AttributionQuality.DETERMINISTIC, confidence: 1 },
+    payload: { property: 'value' },
   });
-}
-
-test('resource identity is isolated by owner lifecycle even when resource ids collide', () => {
-  const ledger = new RuntimeResourceOwnershipLedger();
-  const a = owner('a');
-  const b = owner('b');
-  ledger.ingest(resourceEvent('a-create', 1, RuntimeEventType.OWNER_CREATED, a));
-  ledger.ingest(resourceEvent('b-create', 2, RuntimeEventType.OWNER_CREATED, b));
-  ledger.ingest(resourceEvent('a-acquire', 3, RuntimeEventType.RESOURCE_ACQUIRED, a, 'timer-1'));
-  ledger.ingest(resourceEvent('b-acquire', 4, RuntimeEventType.RESOURCE_ACQUIRED, b, 'timer-1'));
-
-  assert.equal(ledger.snapshot().length, 2);
-  assert.equal(ledger.activeResources({ ownerId: 'a' }).length, 1);
-  assert.equal(ledger.activeResources({ ownerId: 'b' }).length, 1);
-
-  ledger.ingest(resourceEvent('a-release', 5, RuntimeEventType.RESOURCE_RELEASED, a, 'timer-1'));
-  assert.equal(ledger.activeResources({ ownerId: 'a' }).length, 0);
-  assert.equal(ledger.activeResources({ ownerId: 'b' }).length, 1);
-
-  const findings = ledger.ingest(resourceEvent('b-destroy', 6, RuntimeEventType.OWNER_DESTROYED, b));
-  assert.equal(findings.length, 1);
-  assert.equal(findings[0].resource.id, 'timer-1');
-  assert.equal(findings[0].owner.id, 'b');
-});
-
-test('resource ledger normalizes NaN memory bounds instead of disabling pruning', () => {
-  const ledger = new RuntimeResourceOwnershipLedger({ maxRecords: Number.NaN, maxFindings: Number.NaN });
-  assert.equal(ledger.summary().trackedResources, 0);
-  ledger.ingest(resourceEvent('acquire', 1, RuntimeEventType.RESOURCE_ACQUIRED, owner('a'), 'r1'));
-  assert.equal(ledger.snapshot().length, 1);
+  store.emit({
+    type: RuntimeEventType.UPDATE_COMPLETED,
+    framework: { name: 'test' },
+    owner: { id: 'o1', name: 'Alpha', lifecycleGeneration: 1 },
+    evidence: { level: EvidenceLevel.CAUSALITY_CONFIRMED, attribution: AttributionQuality.DETERMINISTIC, confidence: 1 },
+    correlation: { causedByEventId: e1.id },
+    payload: { durationMs: 600 },
+  });
+  const graph = new EvidenceGraph([...store.snapshot()]);
+  const clusters = new RootCauseGrouper({ minClusterSize: 2 }).group(graph);
+  assert.ok(clusters.length > 0, 'should produce at least one cluster');
+  assert.equal(clusters[0].strength, 'confirmed', `expected confirmed but got ${clusters[0].strength}`);
 });
