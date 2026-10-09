@@ -10,6 +10,7 @@ import { PropertyWatchManager } from './property-watch-manager.js';
 import { litAdapter } from '../../adapter/lit/LitAdapter.js';
 import { CascadeAnalyzer } from '../../core/cascade-analyzer.js';
 import { NavigationBridge } from './navigation-bridge.js';
+import { NetworkStateCorrelator } from './network-state-correlator.js';
 import {
     createReadyDeveloperSummary,
     createDeveloperIntelligenceSummary,
@@ -67,6 +68,7 @@ class LitIntelligencePipeline {
     #cascadeAnalyzer;
     #watchManager;
     #navBridge;
+    #networkCorrelator;
     #unsubscribe = null;
     #latest = null;
     #latestCapsule = null;
@@ -101,6 +103,7 @@ class LitIntelligencePipeline {
         if (windowTarget) {
             this.#navBridge = new NavigationBridge({ store, windowTarget });
         }
+        this.#networkCorrelator = new NetworkStateCorrelator({ store });
         this.#recorder = new IncidentFlightRecorder({
             store,
             start: false,
@@ -123,6 +126,7 @@ class LitIntelligencePipeline {
         this.#latest = createReadyDeveloperSummary();
         this.#watchManager?.start();
         this.#navBridge?.start();
+        this.#networkCorrelator?.start();
         if (this.#windowTarget) {
             this.#windowTarget.__LDS_INTELLIGENCE_PIPELINE__ = this;
             if (_toolEnabled('intelligence')) {
@@ -147,6 +151,7 @@ class LitIntelligencePipeline {
         this.#recorder.stop();
         this.#watchManager?.stop();
         this.#navBridge?.stop();
+        this.#networkCorrelator?.stop();
         return this;
     }
 
@@ -164,6 +169,10 @@ class LitIntelligencePipeline {
 
     navigationBridge() {
         return this.#navBridge ?? null;
+    }
+
+    networkCorrelator() {
+        return this.#networkCorrelator ?? null;
     }
 
     /**

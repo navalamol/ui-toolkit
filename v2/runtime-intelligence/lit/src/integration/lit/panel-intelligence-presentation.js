@@ -87,6 +87,48 @@ function _renderFinding(model) {
     `;
 }
 
+function _renderNetworkCorrelationSection(target) {
+    const store = target?.__LDS_EVIDENCE_STORE__;
+    if (!store) return '';
+    const links = store.snapshot?.({ type: 'diagnostic' })
+        ?.filter?.(e => e.payload?.networkCorrelation === true) ?? [];
+    if (links.length === 0) return '';
+
+    // Group by traceId — show one entry per network call, newest first
+    const byTrace = new Map();
+    for (const d of links) {
+        const tid = d.payload.traceId;
+        if (!byTrace.has(tid)) byTrace.set(tid, []);
+        byTrace.get(tid).push(d);
+    }
+    const traces = [...byTrace.values()].slice(-5).reverse(); // latest 5 network calls
+
+    return html`
+        <details style="margin-top:10px;border:1px solid #313244;border-left:3px solid #cba6f7;border-radius:7px;padding:8px 10px;">
+            <summary style="cursor:pointer;color:#cba6f7;font-weight:700;">
+                Network → State — ${byTrace.size} correlated network call${byTrace.size === 1 ? '' : 's'}
+            </summary>
+            <div style="margin-top:8px;font-size:11px;color:#bac2de;line-height:1.6;">
+                <div style="margin-bottom:6px;color:#6c7086;">State changes that occurred within the correlation window after a network call completed.</div>
+                <ul style="margin:0;padding-left:16px;">
+                    ${traces.map(group => {
+                        const first = group[0];
+                        const method = first.payload.networkMethod ?? 'GET';
+                        const path = first.payload.networkPath ?? '(unknown)';
+                        const ms = first.payload.tracedMs ?? '?';
+                        const stateCount = group.length;
+                        return html`<li>
+                            <code style="color:#89b4fa;">${method} ${path}</code>
+                            → ${stateCount} state change${stateCount === 1 ? '' : 's'} within ${ms}ms
+                        </li>`;
+                    })}
+                </ul>
+                <div style="margin-top:6px;color:#6c7086;font-size:10px;">Evidence level: correlation (temporal). EvidenceGraph TRACE_CONTEXT edges link these events.</div>
+            </div>
+        </details>
+    `;
+}
+
 function _renderOrphanSection(target) {
     const store = target?.__LDS_EVIDENCE_STORE__;
     if (!store) return '';
@@ -194,6 +236,7 @@ function _renderIntelligenceTab(target) {
 
         ${_renderCascadeSection(target)}
         ${_renderOrphanSection(target)}
+        ${_renderNetworkCorrelationSection(target)}
 
         <details style="margin-top:14px;border-top:1px solid #313244;padding-top:8px;">
             <summary style="cursor:pointer;color:#89b4fa;">Technical evidence (optional)</summary>
