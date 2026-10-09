@@ -5,7 +5,7 @@ import { LitAdapter } from '../../src/adapter/lit/LitAdapter.js';
 import { EvidenceStore } from '../../src/core/evidence-store.js';
 import { RuntimeEventType } from '../../src/core/evidence-protocol.js';
 import { LitIntelligencePipeline } from '../../src/integration/lit/LitIntelligencePipeline.js';
-import { recordLegacyLitError } from '../../src/integration/lit/legacy-collector-bridge.js';
+import { recordLegacyLitError, recordSlowRender } from '../../src/integration/lit/legacy-collector-bridge.js';
 
 function fakeLitElement() {
     return {
@@ -155,4 +155,114 @@ test('sub-threshold Lit update keeps intelligence in ready state', () => {
     assert.equal(pipeline.snapshot().status, 'ready');
     assert.equal(pipeline.recorder().incident(), null);
     pipeline.stop();
+});
+
+// ── P1: recordSlowRender ──────────────────────────────────────────────────────
+
+test('recordSlowRender above threshold enters slow-update-captured with perf-legacy source', () => {
+    const store = new EvidenceStore({ maxEntries: 50 });
+    const adapter = new LitAdapter({ store });
+    const pipeline = new LitIntelligencePipeline({
+        store,
+        windowTarget: null,
+        slowUpdateThresholdMs: 500,
+    });
+    const el = fakeLitElement();
+
+    pipeline.start();
+    adapter.connect(el);
+    recordSlowRender(el, 600, { adapter });
+
+    const snapshot = pipeline.snapshot();
+    assert.equal(snapshot.status, 'incident-captured');
+
+    const events = store.snapshot();
+    const triggerEvent = events.find(e => e.type === RuntimeEventType.UPDATE_COMPLETED);
+    assert.ok(triggerEvent, 'UPDATE_COMPLETED event must exist');
+    assert.equal(triggerEvent.payload.source, 'perf-legacy');
+    pipeline.stop();
+});
+
+test('recordSlowRender below threshold keeps pipeline in ready state', () => {
+    const store = new EvidenceStore({ maxEntries: 50 });
+    const adapter = new LitAdapter({ store });
+    const pipeline = new LitIntelligencePipeline({
+        store,
+        windowTarget: null,
+        slowUpdateThresholdMs: 500,
+    });
+    const el = fakeLitElement();
+
+    pipeline.start();
+    adapter.connect(el);
+    recordSlowRender(el, 400, { adapter });
+
+    assert.equal(pipeline.snapshot().status, 'ready');
+    pipeline.stop();
+});
+
+test('recordSlowRender with NaN emits no event and pipeline stays ready', () => {
+    const store = new EvidenceStore({ maxEntries: 50 });
+    const adapter = new LitAdapter({ store });
+    const pipeline = new LitIntelligencePipeline({ store, windowTarget: null });
+    const el = fakeLitElement();
+
+    pipeline.start();
+    adapter.connect(el);
+    const before = store.snapshot().length;
+    recordSlowRender(el, NaN, { adapter });
+
+    assert.equal(store.snapshot().length, before);
+    assert.equal(pipeline.snapshot().status, 'ready');
+    pipeline.stop();
+});
+
+// ── P2: Intelligence tab opt-in gate ─────────────────────────────────────────
+
+test('intelligence disabled — start() does not patch lds-debug-panel prototype', () => {
+    const store = new EvidenceStore({ maxEntries: 20 });
+    const previousWindow = globalThis.window;
+    try {
+        const fakePanel = function LdsDebugPanel() {};
+        const target = {
+            customElements: { get: name => name === 'lds-debug-panel' ? fakePanel : undefined },
+            dispatchEvent() {},
+            CustomEvent: class CustomEvent { constructor() {} },
+        };
+        // No __LDS_INTELLIGENCE_ENABLED__ and no __LDS_DEBUG__.intelligence
+        globalThis.window = target;
+
+        const pipeline = new LitIntelligencePipeline({ store, windowTarget: target });
+        pipeline.start();
+
+        assert.equal(fakePanel.prototype.__ldsIntelligencePresentationPatched, undefined);
+        pipeline.stop();
+    } finally {
+        if (previousWindow === undefined) delete globalThis.window;
+        else globalThis.window = previousWindow;
+    }
+});
+
+test('intelligence enabled — tab installs as before', () => {
+    const store = new EvidenceStore({ maxEntries: 20 });
+    const previousWindow = globalThis.window;
+    try {
+        const fakePanel = function LdsDebugPanel() {};
+        const target = {
+            __LDS_INTELLIGENCE_ENABLED__: true,
+            customElements: { get: name => name === 'lds-debug-panel' ? fakePanel : undefined },
+            dispatchEvent() {},
+            CustomEvent: class CustomEvent { constructor() {} },
+        };
+        globalThis.window = target;
+
+        const pipeline = new LitIntelligencePipeline({ store, windowTarget: target });
+        pipeline.start();
+
+        assert.equal(fakePanel.prototype.__ldsIntelligencePresentationPatched, true);
+        pipeline.stop();
+    } finally {
+        if (previousWindow === undefined) delete globalThis.window;
+        else globalThis.window = previousWindow;
+    }
 });

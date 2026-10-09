@@ -5,6 +5,7 @@ import { createEvidenceCapsule } from '../../core/evidence-capsule.js';
 import { RuntimeEventType } from '../../core/evidence-protocol.js';
 import { evidenceStore } from '../../core/evidence-store.js';
 import { installLitIntelligencePanelPresentation } from './panel-intelligence-presentation.js';
+import { _toolEnabled } from '../../core/gate.js';
 import {
     createReadyDeveloperSummary,
     createDeveloperIntelligenceSummary,
@@ -106,7 +107,7 @@ class LitIntelligencePipeline {
         this.#latest = createReadyDeveloperSummary();
         if (this.#windowTarget) {
             this.#windowTarget.__LDS_INTELLIGENCE_PIPELINE__ = this;
-            if (this.#presentInPanel) {
+            if (this.#presentInPanel && _toolEnabled('intelligence')) {
                 installLitIntelligencePanelPresentation({ target: this.#windowTarget });
             }
         }

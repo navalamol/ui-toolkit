@@ -1,0 +1,152 @@
+# Runtime Intelligence — Roadmap and Next Missions
+
+Last updated: 2026-10-08
+
+---
+
+## Strategic direction (confirmed)
+
+The system is intentionally **generic**: Lit + React now, Angular/Vue eventually. Do not narrow it back to Lit-only.
+
+Core product constraint:
+> The tool must feel simpler than the problem it is helping debug.
+
+Progression gate:
+> Before adding more architecture, prove that a developer using Lit/UI Platform can say: *"The baseline showed symptoms, but Intelligence connected them and gave me the right place to investigate faster."*
+
+---
+
+## Architecture layers (current state)
+
+```
+UREP core (keep)
+├── evidence-protocol.js       — event schema, evidence ladder
+├── evidence-store.js          — bounded rolling store
+├── evidence-graph.js          — causal + structural graph
+├── root-cause.js              — grouper + scoring (FIXED this session)
+├── incident-flight-recorder.js — bounded freeze/resume
+├── evidence-capsule.js        — privacy-filtered AI export
+├── enterprise-privacy.js      — sanitization boundary
+└── source-resolver.js         — file:line attribution
+
+Framework adapters (keep, React coming soon)
+├── FrameworkAdapter.js        — generic base
+├── adapter/lit/LitAdapter.js  — Lit lifecycle → UREP
+└── adapter/react/ReactAdapter.js — React → UREP (ready for React work)
+
+Lit integration (keep + maintain)
+├── LitIntelligencePipeline.js        — orchestrator
+├── legacy-collector-bridge.js        — LdsErrorBoundary → UREP
+├── network-evidence-bridge.js        — network log → UREP
+├── developer-intelligence-summary.js — human-readable finding (FIXED this session)
+└── panel-intelligence-presentation.js — Intelligence tab (FIXED this session)
+
+Deferred (archive/ and future/)
+├── src/archive/diagnostic-policy.js  — over-abstracted gate; reconnect if dynamic budgets needed
+└── src/future/resource-ownership-ledger.js — resource lifetime violations; reconnect after memory.js UREP bridge
+```
+
+---
+
+## Immediate next missions
+
+### Mission A — Real UI Platform validation (P0, not yet done)
+
+**This is the highest priority before any new features.**
+
+Run two specific scenarios in UI Platform with `npm link`:
+
+**Scenario 1: Runtime error**
+1. Enable: `window.__LDS_INTELLIGENCE_ENABLED__ = true; window.__LDS_DEBUG__ = true`
+2. Trigger a known RufElement render error
+3. Open the `✨ Intelligence` tab
+4. Check: does "Problem" show the correct component? Does "Strongest signal" (new label after this session's fix) name something genuinely related?
+
+**Scenario 2: Slow render**
+1. Force a >500ms Lit update
+2. Open Intelligence tab
+3. Check: does the component shown match what was actually slow? Is the label honest ("Strongest signal" for correlated, "Likely cause" only for attributed)?
+
+If both scenarios produce trustworthy output → expand. If not → audit scoring further.
+
+### Mission B — perf.js slow renders bridged to UREP (P1)
+
+`perf.js` currently writes to `window.__LDS_SLOW_RENDERS__` only. It never emits UREP events.
+
+**What to add in `legacy-collector-bridge.js`:**
+
+```js
+export function recordSlowRender({ component, durationMs, timestamp, source }) {
+  const store = evidenceStore;
+  store.emit({
+    type: RuntimeEventType.UPDATE_COMPLETED,
+    framework: { name: 'lit' },
+    owner: { id: component, name: component, lifecycleGeneration: 1 },
+    evidence: {
+      level: EvidenceLevel.ATTRIBUTION,
+      attribution: AttributionQuality.FRAMEWORK_REPORTED,
+      confidence: 0.9,
+    },
+    source: source || null,
+    payload: { durationMs },
+  });
+}
+```
+
+Then call `recordSlowRender()` from `perf.js` when it detects a slow render. This means slow renders become first-class UREP evidence and can participate in root-cause scoring.
+
+### Mission C — `_toolEnabled('intelligence')` gate on panel bridge (P2)
+
+`panel-intelligence-presentation.js` currently installs the Intelligence tab unconditionally.
+
+Add gate check:
+```js
+// In installLitIntelligencePanelPresentation()
+if (!_toolEnabled('intelligence') && !target?.__LDS_INTELLIGENCE_PIPELINE__) return false;
+```
+
+This ensures the tab only appears when Intelligence is actually enabled.
+
+### Mission D — React adapter work (user-directed, no date yet)
+
+`ReactAdapter.js` is active and ready. When the user decides to start React work:
+1. Wire `ReactAdapter` into a `ReactIntelligencePipeline` (similar to `LitIntelligencePipeline`)
+2. Bridge React error boundaries → UREP
+3. Bridge React profiler renders → UREP
+4. Evidence ladder is already generic — no changes needed there
+
+Start here only when the user explicitly starts a React consumer project.
+
+---
+
+## Deferred missions (do not start yet)
+
+| Mission | Why deferred |
+|---|---|
+| Reconnect `resource-ownership-ledger.js` from `src/future/` | Needs `memory.js` to emit `RESOURCE_ACQUIRED`/`RESOURCE_RELEASED` UREP events first |
+| Event tracer → UREP bridge | High noise risk; defer until causal accuracy proven |
+| Dynamic enable/disable after page load | Complex patch/unpatch; defer until needed |
+| Vue / Angular adapters | No consumer; defer after React is proven |
+| Rich causal timeline visualization | Beautiful but dangerous if scoring is wrong; defer until accuracy proven |
+| AI handoff improvements | `exportCapsule()` already works; improvements defer until UX is stable |
+
+---
+
+## Architectural invariants (never break)
+
+1. **Generic intelligence is additive** — never remove/hide Lit/Main Platform surfaces
+2. **Evidence ladder** (ascending): observation < correlation < attribution < lifetime-violation < retainer-confirmed < causality-confirmed
+3. **`_reachable()` uses CAUSES + PARENT only in graph traversal** — IC/TC edges must not inflate anchor scores
+4. **`gate.js` is read-only** — `_toolEnabled()` must never write to `window`, only read. SSR guard MUST be first line.
+5. **Privacy at capture and export boundaries** — does not change evidence semantics
+6. **Recorder starts before adapter.connect()** — do not regress this ordering
+7. **Slow render analysis does not freeze the recorder** — a later crash must still be capturable as a stronger incident
+8. **Structural ancestry does not equal causation** — root-cause scoring weights explicit CAUSES edges far above PARENT tree position
+
+---
+
+## Known recurring bug to watch
+
+**`gate.js` force-write regression.** The other AI has re-introduced this bug at least twice. Every review session should check `_toolEnabled()` starts with `if (typeof window === 'undefined') return false;` and contains NO write lines before that guard.
+
+Run: `npm test` — if `diagnostic gate is SSR-safe and does not force-enable tools` fails, gate.js has the bug again.

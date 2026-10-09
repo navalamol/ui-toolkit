@@ -97,4 +97,18 @@ function recordLegacyLitError(el, entry, error, { adapter = litAdapter } = {}) {
     });
 }
 
-export { recordLegacyLitError };
+function recordSlowRender(el, durationMs, { adapter }) {
+    if (!Number.isFinite(durationMs) || durationMs <= 0) return;
+
+    const owner = adapter.ownerOf(el) ?? { id: 'unknown', tag: el.tagName?.toLowerCase() ?? 'unknown' };
+
+    adapter.emit(RuntimeEventType.UPDATE_COMPLETED, {
+        owner,
+        payload: {
+            durationMs,
+            source: 'perf-legacy',
+        },
+    });
+}
+
+export { recordLegacyLitError, recordSlowRender };
