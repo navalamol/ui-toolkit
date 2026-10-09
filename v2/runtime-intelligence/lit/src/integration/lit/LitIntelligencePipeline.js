@@ -6,6 +6,8 @@ import { RuntimeEventType } from '../../core/evidence-protocol.js';
 import { evidenceStore } from '../../core/evidence-store.js';
 import { installLitIntelligencePanelPresentation } from './panel-intelligence-presentation.js';
 import { _toolEnabled } from '../../core/gate.js';
+import { PropertyWatchManager } from './property-watch-manager.js';
+import { litAdapter } from '../../adapter/lit/LitAdapter.js';
 import {
     createReadyDeveloperSummary,
     createDeveloperIntelligenceSummary,
@@ -60,6 +62,7 @@ class LitIntelligencePipeline {
     #windowTarget;
     #recorder;
     #grouper;
+    #watchManager;
     #unsubscribe = null;
     #latest = null;
     #latestCapsule = null;
@@ -76,6 +79,7 @@ class LitIntelligencePipeline {
         rootCauseOptions = {},
         slowUpdateThresholdMs = DEFAULT_SLOW_UPDATE_THRESHOLD_MS,
         presentInPanel = true,
+        adapter = litAdapter,
     } = {}) {
         if (!store || typeof store.subscribe !== 'function' || typeof store.snapshot !== 'function') {
             throw new TypeError('LitIntelligencePipeline requires an EvidenceStore-compatible store.');
@@ -98,6 +102,9 @@ class LitIntelligencePipeline {
                 : false,
             ...recorderOptions,
         });
+        if (adapter && typeof adapter.addStateChangeInterceptor === 'function') {
+            this.#watchManager = new PropertyWatchManager({ adapter, store });
+        }
     }
 
     start() {
@@ -105,10 +112,19 @@ class LitIntelligencePipeline {
         this.#recorder.start();
         this.#unsubscribe = this.#store.subscribe(event => this.#onEvidence(event));
         this.#latest = createReadyDeveloperSummary();
+        this.#watchManager?.start();
         if (this.#windowTarget) {
             this.#windowTarget.__LDS_INTELLIGENCE_PIPELINE__ = this;
-            if (this.#presentInPanel && _toolEnabled('intelligence')) {
-                installLitIntelligencePanelPresentation({ target: this.#windowTarget });
+            if (_toolEnabled('intelligence')) {
+                if (this.#presentInPanel) {
+                    installLitIntelligencePanelPresentation({ target: this.#windowTarget });
+                }
+                if (this.#watchManager) {
+                    this.#windowTarget.__LDS_WATCH_PROPERTY__ =
+                        (tag, prop, opts) => this.#watchManager.watch(tag, prop, opts);
+                    this.#windowTarget.__LDS_UNWATCH_PROPERTY__ =
+                        (tag, prop) => this.#watchManager.unwatch(tag, prop);
+                }
             }
         }
         this.#publish();
@@ -119,11 +135,16 @@ class LitIntelligencePipeline {
         if (this.#unsubscribe) this.#unsubscribe();
         this.#unsubscribe = null;
         this.#recorder.stop();
+        this.#watchManager?.stop();
         return this;
     }
 
     snapshot() {
         return this.#latest;
+    }
+
+    watchManager() {
+        return this.#watchManager ?? null;
     }
 
     /**

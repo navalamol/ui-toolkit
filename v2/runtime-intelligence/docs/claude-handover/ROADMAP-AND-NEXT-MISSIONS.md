@@ -1,6 +1,6 @@
 # Runtime Intelligence — Roadmap and Next Missions
 
-Last updated: 2026-10-08
+Last updated: 2026-10-10
 
 ---
 
@@ -45,6 +45,29 @@ Deferred (archive/ and future/)
 ├── src/archive/diagnostic-policy.js  — over-abstracted gate; reconnect if dynamic budgets needed
 └── src/future/resource-ownership-ledger.js — resource lifetime violations; reconnect after memory.js UREP bridge
 ```
+
+---
+
+## Missions 10A–10E — Developer Pain Point Series
+
+These five missions extend the tool beyond slow-render/error detection into the hardest daily
+developer problems. Each is independently releasable. All emit standard UREP events — the core
+(EvidenceGraph, RootCauseGrouper, IncidentFlightRecorder) processes them identically for
+Lit, React, and Vue.
+
+| Mission | Status | Pain solved | Key file |
+|---|---|---|---|
+| **10B** Property Watch | ✅ Done | "Where is this property being set?" | `property-watch-manager.js` |
+| **10A** Cascade Tracker | Queued | "Why did 20 components re-render?" | `cascade-analyzer.js` |
+| **10C** Navigation+Orphan | Queued | "What's leaking after route change?" | `navigation-bridge.js` |
+| **10D** Network→State | Queued | "Which API call caused this spike?" | `network-state-correlator.js` |
+| **10E** Update Budget | Queued | "Something is over-reacting" | `update-budget-monitor.js` |
+
+See `lit/CLAUDE.md` for the full mission spec structure and `lit/docs/MISSION-10B-*.md` for an
+example of a completed mission doc.
+
+### Protocol events waiting to be wired (emit before defining new types)
+`DEPENDENCY_TRIGGERED` (10A), `NAVIGATION` (10C), `INTERACTION` (future), `BROWSER_FRAME` (future)
 
 ---
 
