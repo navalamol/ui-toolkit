@@ -248,7 +248,7 @@ Every test: `pipeline.stop()` or `store.clear()` at the end. No shared state bet
 | **10A Cascade Tracker** | ✅ Done | `cascade-analyzer.js` |
 | **10C Navigation/Orphan** | ✅ Done | `navigation-bridge.js` |
 | **10D Network→State** | ✅ Done | `network-state-correlator.js` |
-| 10E Update Budget | Queued | `update-budget-monitor.js` |
+| **10E Update Budget** | ✅ Done | `update-budget-monitor.js` |
 | P0 Browser Validation | Pending | Manual (npm link + trigger) |
 | Mission 11 Vue | After P0 | `src/adapter/vue/VueAdapter.js` |
 

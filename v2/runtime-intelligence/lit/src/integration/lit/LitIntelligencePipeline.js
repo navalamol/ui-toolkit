@@ -11,6 +11,7 @@ import { litAdapter } from '../../adapter/lit/LitAdapter.js';
 import { CascadeAnalyzer } from '../../core/cascade-analyzer.js';
 import { NavigationBridge } from './navigation-bridge.js';
 import { NetworkStateCorrelator } from './network-state-correlator.js';
+import { UpdateBudgetMonitor } from '../../core/update-budget-monitor.js';
 import {
     createReadyDeveloperSummary,
     createDeveloperIntelligenceSummary,
@@ -69,6 +70,7 @@ class LitIntelligencePipeline {
     #watchManager;
     #navBridge;
     #networkCorrelator;
+    #budgetMonitor;
     #unsubscribe = null;
     #latest = null;
     #latestCapsule = null;
@@ -104,6 +106,7 @@ class LitIntelligencePipeline {
             this.#navBridge = new NavigationBridge({ store, windowTarget });
         }
         this.#networkCorrelator = new NetworkStateCorrelator({ store });
+        this.#budgetMonitor = new UpdateBudgetMonitor({ store });
         this.#recorder = new IncidentFlightRecorder({
             store,
             start: false,
@@ -127,6 +130,7 @@ class LitIntelligencePipeline {
         this.#watchManager?.start();
         this.#navBridge?.start();
         this.#networkCorrelator?.start();
+        this.#budgetMonitor?.start();
         if (this.#windowTarget) {
             this.#windowTarget.__LDS_INTELLIGENCE_PIPELINE__ = this;
             if (_toolEnabled('intelligence')) {
@@ -152,6 +156,7 @@ class LitIntelligencePipeline {
         this.#watchManager?.stop();
         this.#navBridge?.stop();
         this.#networkCorrelator?.stop();
+        this.#budgetMonitor?.stop();
         return this;
     }
 
@@ -173,6 +178,10 @@ class LitIntelligencePipeline {
 
     networkCorrelator() {
         return this.#networkCorrelator ?? null;
+    }
+
+    budgetMonitor() {
+        return this.#budgetMonitor ?? null;
     }
 
     /**

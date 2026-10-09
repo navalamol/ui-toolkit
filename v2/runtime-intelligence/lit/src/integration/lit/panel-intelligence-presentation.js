@@ -87,6 +87,43 @@ function _renderFinding(model) {
     `;
 }
 
+function _renderBudgetViolationSection(target) {
+    const store = target?.__LDS_EVIDENCE_STORE__;
+    if (!store) return '';
+    const violations = store.snapshot?.({ type: 'diagnostic' })
+        ?.filter?.(e => e.payload?.budgetViolation === true) ?? [];
+    if (violations.length === 0) return '';
+
+    // Deduplicate by tag — keep worst (highest updateCount)
+    const byTag = new Map();
+    for (const v of violations) {
+        const tag = v.payload.tag;
+        const prev = byTag.get(tag);
+        if (!prev || v.payload.updateCount > prev.updateCount) byTag.set(tag, v.payload);
+    }
+
+    return html`
+        <details style="margin-top:10px;border:1px solid #313244;border-left:3px solid #f9e2af;border-radius:7px;padding:8px 10px;">
+            <summary style="cursor:pointer;color:#f9e2af;font-weight:700;">
+                Over-rendering — ${byTag.size} component${byTag.size === 1 ? '' : 's'} exceeded update budget
+            </summary>
+            <div style="margin-top:8px;font-size:11px;color:#bac2de;line-height:1.6;">
+                <div style="margin-bottom:6px;color:#6c7086;">These components updated more times than their budget allows within the rolling window. They may be reacting to state changes they don't need.</div>
+                <ul style="margin:0;padding-left:16px;">
+                    ${[...byTag.values()].map(p => html`
+                        <li>
+                            <code style="color:#cba6f7;">&lt;${p.tag}&gt;</code>
+                            — ${p.updateCount} updates in ${p.windowMs}ms
+                            (budget: ${p.countPerWindow})
+                        </li>
+                    `)}
+                </ul>
+                <div style="margin-top:6px;color:#6c7086;font-size:10px;">Set per-tag budget: <code style="color:#cba6f7;">window.__LDS_INTELLIGENCE_PIPELINE__.budgetMonitor().setBudget('tag-name', &#123;countPerWindow, windowMs&#125;)</code></div>
+            </div>
+        </details>
+    `;
+}
+
 function _renderNetworkCorrelationSection(target) {
     const store = target?.__LDS_EVIDENCE_STORE__;
     if (!store) return '';
@@ -237,6 +274,7 @@ function _renderIntelligenceTab(target) {
         ${_renderCascadeSection(target)}
         ${_renderOrphanSection(target)}
         ${_renderNetworkCorrelationSection(target)}
+        ${_renderBudgetViolationSection(target)}
 
         <details style="margin-top:14px;border-top:1px solid #313244;padding-top:8px;">
             <summary style="cursor:pointer;color:#89b4fa;">Technical evidence (optional)</summary>

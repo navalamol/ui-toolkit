@@ -21,6 +21,7 @@ export { PropertyWatchManager } from './integration/lit/property-watch-manager.j
 export { NavigationBridge } from './integration/lit/navigation-bridge.js';
 export { NetworkStateCorrelator } from './integration/lit/network-state-correlator.js';
 export { CascadeAnalyzer } from './core/cascade-analyzer.js';
+export { UpdateBudgetMonitor } from './core/update-budget-monitor.js';
 export { EvidenceStore, evidenceStore } from './core/evidence-store.js';
 export { EdgeRelation, EvidenceGraph } from './core/evidence-graph.js';
 export { RootCauseGrouper } from './core/root-cause.js';
