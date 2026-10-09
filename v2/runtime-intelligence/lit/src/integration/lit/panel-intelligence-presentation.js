@@ -87,6 +87,41 @@ function _renderFinding(model) {
     `;
 }
 
+function _renderOrphanSection(target) {
+    const store = target?.__LDS_EVIDENCE_STORE__;
+    if (!store) return '';
+    const orphanDiagnostics = store.snapshot?.({ type: 'diagnostic' })
+        ?.filter?.(e => e.payload?.orphanSuspect === true) ?? [];
+    if (orphanDiagnostics.length === 0) return '';
+
+    // Deduplicate by ownerId — keep highest survivedNavigationCount
+    const byOwner = new Map();
+    for (const d of orphanDiagnostics) {
+        const id = d.payload.ownerId;
+        const prev = byOwner.get(id);
+        if (!prev || d.payload.survivedNavigationCount > prev.survivedNavigationCount) {
+            byOwner.set(id, d.payload);
+        }
+    }
+
+    return html`
+        <details style="margin-top:10px;border:1px solid #313244;border-left:3px solid #f38ba8;border-radius:7px;padding:8px 10px;">
+            <summary style="cursor:pointer;color:#f38ba8;font-weight:700;">
+                Orphan Suspects — ${byOwner.size} component${byOwner.size === 1 ? '' : 's'} survived navigation without disconnect
+            </summary>
+            <div style="margin-top:8px;font-size:11px;color:#bac2de;line-height:1.6;">
+                <div style="margin-bottom:6px;color:#6c7086;">These components were alive before a route change but were never destroyed. They may be holding event listeners or references that prevent GC.</div>
+                <ul style="margin:0;padding-left:16px;">
+                    ${[...byOwner.values()].map(p => html`
+                        <li><code style="color:#cba6f7;">&lt;${p.tag}&gt;</code> — survived ${p.survivedNavigationCount} navigation${p.survivedNavigationCount === 1 ? '' : 's'}</li>
+                    `)}
+                </ul>
+                <div style="margin-top:6px;color:#6c7086;font-size:10px;">Evidence level: correlation (temporal). Confirm with DevTools Memory snapshot.</div>
+            </div>
+        </details>
+    `;
+}
+
 function _renderCascadeSection(target) {
     const cascade = target?.__LDS_CASCADE_REPORT__;
     if (!cascade?.hasCascade) return '';
@@ -158,6 +193,7 @@ function _renderIntelligenceTab(target) {
         ` : ''}
 
         ${_renderCascadeSection(target)}
+        ${_renderOrphanSection(target)}
 
         <details style="margin-top:14px;border-top:1px solid #313244;padding-top:8px;">
             <summary style="cursor:pointer;color:#89b4fa;">Technical evidence (optional)</summary>

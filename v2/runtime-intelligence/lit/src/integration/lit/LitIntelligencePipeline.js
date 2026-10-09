@@ -9,6 +9,7 @@ import { _toolEnabled } from '../../core/gate.js';
 import { PropertyWatchManager } from './property-watch-manager.js';
 import { litAdapter } from '../../adapter/lit/LitAdapter.js';
 import { CascadeAnalyzer } from '../../core/cascade-analyzer.js';
+import { NavigationBridge } from './navigation-bridge.js';
 import {
     createReadyDeveloperSummary,
     createDeveloperIntelligenceSummary,
@@ -65,6 +66,7 @@ class LitIntelligencePipeline {
     #grouper;
     #cascadeAnalyzer;
     #watchManager;
+    #navBridge;
     #unsubscribe = null;
     #latest = null;
     #latestCapsule = null;
@@ -96,6 +98,9 @@ class LitIntelligencePipeline {
         this.#presentInPanel = presentInPanel;
         this.#grouper = new RootCauseGrouper(rootCauseOptions);
         this.#cascadeAnalyzer = new CascadeAnalyzer();
+        if (windowTarget) {
+            this.#navBridge = new NavigationBridge({ store, windowTarget });
+        }
         this.#recorder = new IncidentFlightRecorder({
             store,
             start: false,
@@ -117,6 +122,7 @@ class LitIntelligencePipeline {
         this.#unsubscribe = this.#store.subscribe(event => this.#onEvidence(event));
         this.#latest = createReadyDeveloperSummary();
         this.#watchManager?.start();
+        this.#navBridge?.start();
         if (this.#windowTarget) {
             this.#windowTarget.__LDS_INTELLIGENCE_PIPELINE__ = this;
             if (_toolEnabled('intelligence')) {
@@ -140,6 +146,7 @@ class LitIntelligencePipeline {
         this.#unsubscribe = null;
         this.#recorder.stop();
         this.#watchManager?.stop();
+        this.#navBridge?.stop();
         return this;
     }
 
@@ -153,6 +160,10 @@ class LitIntelligencePipeline {
 
     cascadeReport() {
         return this.#latestCascade;
+    }
+
+    navigationBridge() {
+        return this.#navBridge ?? null;
     }
 
     /**
