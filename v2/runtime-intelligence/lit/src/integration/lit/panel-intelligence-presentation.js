@@ -87,6 +87,36 @@ function _renderFinding(model) {
     `;
 }
 
+function _renderCascadeSection(target) {
+    const cascade = target?.__LDS_CASCADE_REPORT__;
+    if (!cascade?.hasCascade) return '';
+
+    const overReacting = cascade.overReactingOwners?.length
+        ? html`<div style="margin-top:6px;color:#f9e2af;font-size:11px;">
+            ⚠ Over-reacting: ${cascade.overReactingOwners.map(o => html`<code style="color:#cba6f7;">&lt;${o.tag}&gt;</code> ×${o.triggerCount} `)}
+          </div>`
+        : '';
+
+    return html`
+        <details style="margin-top:10px;border:1px solid #313244;border-left:3px solid #a6e3a1;border-radius:7px;padding:8px 10px;">
+            <summary style="cursor:pointer;color:#a6e3a1;font-weight:700;">
+                Reactive Cascade — 1 change → ${cascade.componentCount} component${cascade.componentCount === 1 ? '' : 's'} · depth ${cascade.depth} · ${cascade.totalUpdateMs}ms total
+            </summary>
+            <div style="margin-top:8px;font-size:11px;color:#bac2de;line-height:1.6;">
+                <div style="margin-bottom:4px;"><strong style="color:#cdd6f4;">${cascade.triggerCount} cascade trigger${cascade.triggerCount === 1 ? '' : 's'}</strong> detected in this incident.</div>
+                ${cascade.branches?.length ? html`
+                    <div style="margin-bottom:2px;color:#6c7086;text-transform:uppercase;letter-spacing:.04em;font-size:10px;">Components in cascade</div>
+                    <ul style="margin:0;padding-left:16px;">
+                        ${cascade.branches.map(b => html`<li><code style="color:#cba6f7;">&lt;${b.tag}&gt;</code> — depth ${b.depth}, triggered ${b.triggerCount}×</li>`)}
+                    </ul>
+                ` : ''}
+                ${overReacting}
+                <div style="margin-top:6px;color:#6c7086;font-size:10px;">Access full data: <code style="color:#cba6f7;">window.__LDS_CASCADE_REPORT__</code></div>
+            </div>
+        </details>
+    `;
+}
+
 function _renderIntelligenceTab(target) {
     const model = target?.__LDS_INTELLIGENCE__;
     const tools = _toolState(target);
@@ -126,6 +156,8 @@ function _renderIntelligenceTab(target) {
                 Perf is enabled but has no samples yet. Navigate/remount Lit components or exercise the screen before judging Perf coverage.
             </div>
         ` : ''}
+
+        ${_renderCascadeSection(target)}
 
         <details style="margin-top:14px;border-top:1px solid #313244;padding-top:8px;">
             <summary style="cursor:pointer;color:#89b4fa;">Technical evidence (optional)</summary>

@@ -8,6 +8,7 @@ import { installLitIntelligencePanelPresentation } from './panel-intelligence-pr
 import { _toolEnabled } from '../../core/gate.js';
 import { PropertyWatchManager } from './property-watch-manager.js';
 import { litAdapter } from '../../adapter/lit/LitAdapter.js';
+import { CascadeAnalyzer } from '../../core/cascade-analyzer.js';
 import {
     createReadyDeveloperSummary,
     createDeveloperIntelligenceSummary,
@@ -62,10 +63,12 @@ class LitIntelligencePipeline {
     #windowTarget;
     #recorder;
     #grouper;
+    #cascadeAnalyzer;
     #watchManager;
     #unsubscribe = null;
     #latest = null;
     #latestCapsule = null;
+    #latestCascade = null;
     #analysisContext = null;
     #capsuleSequence = 0;
     #transientIncidentSequence = 0;
@@ -92,6 +95,7 @@ class LitIntelligencePipeline {
         this.#slowUpdateThresholdMs = slowUpdateThresholdMs;
         this.#presentInPanel = presentInPanel;
         this.#grouper = new RootCauseGrouper(rootCauseOptions);
+        this.#cascadeAnalyzer = new CascadeAnalyzer();
         this.#recorder = new IncidentFlightRecorder({
             store,
             start: false,
@@ -147,6 +151,10 @@ class LitIntelligencePipeline {
         return this.#watchManager ?? null;
     }
 
+    cascadeReport() {
+        return this.#latestCascade;
+    }
+
     /**
      * Full forensic evidence stays behind an explicit API rather than living in
      * the default developer-facing window object/panel model.
@@ -163,6 +171,7 @@ class LitIntelligencePipeline {
         this.#recorder.resume({ clear });
         this.#analysisContext = null;
         this.#latestCapsule = null;
+        this.#latestCascade = null;
         this.#latest = createReadyDeveloperSummary();
         this.#publish();
         return this;
@@ -229,12 +238,15 @@ class LitIntelligencePipeline {
                 .map(id => _eventRef(graph.node(id)))
                 .filter(Boolean)
             : [_eventRef(triggerEvent)].filter(Boolean);
+        const cascade = this.#cascadeAnalyzer.analyze(graph);
+        this.#latestCascade = cascade;
         const context = {
             triggerEvent,
             incident,
             rootCause,
             rootEvent,
             causalChain,
+            cascade,
             verification: null,
         };
         this.#analysisContext = context;
@@ -243,7 +255,7 @@ class LitIntelligencePipeline {
         this.#publish();
     }
 
-    #buildCapsule({ triggerEvent, incident, rootCause, rootEvent, causalChain, verification }) {
+    #buildCapsule({ triggerEvent, incident, rootCause, rootEvent, causalChain, cascade, verification }) {
         const slowUpdate = incident.reason === 'lit-slow-update';
         return createEvidenceCapsule({
             id: `lit-capsule-${++this.#capsuleSequence}-${triggerEvent.id}`,
@@ -276,6 +288,7 @@ class LitIntelligencePipeline {
                 framework: 'lit',
                 presentationSurface: 'lds-debug-panel:pinpoint',
                 ...(slowUpdate ? { slowUpdateThresholdMs: this.#slowUpdateThresholdMs } : {}),
+                ...(cascade ? { cascade } : {}),
             },
         });
     }
@@ -285,6 +298,7 @@ class LitIntelligencePipeline {
         // This global is intentionally a compact developer view. Heavy forensic
         // evidence is available only through __LDS_INTELLIGENCE_PIPELINE__.exportCapsule().
         this.#windowTarget.__LDS_INTELLIGENCE__ = this.#latest;
+        this.#windowTarget.__LDS_CASCADE_REPORT__ = this.#latestCascade;
         const EventCtor = this.#windowTarget.CustomEvent;
         if (typeof this.#windowTarget.dispatchEvent === 'function' && typeof EventCtor === 'function') {
             this.#windowTarget.dispatchEvent(new EventCtor('lds-intelligence-updated', {

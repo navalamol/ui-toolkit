@@ -244,8 +244,8 @@ Every test: `pipeline.stop()` or `store.clear()` at the end. No shared state bet
 | 01–09.5 | ✅ Done | Full UREP pipeline, Lit + React adapters, privacy, capsule |
 | P1 recordSlowRender | ✅ Done | `legacy-collector-bridge.js` |
 | P2 intelligence gate | ✅ Done | `LitIntelligencePipeline.js` |
-| **10B Property Watch** | 🔨 In progress | `property-watch-manager.js` |
-| 10A Cascade Tracker | Queued | `cascade-analyzer.js` |
+| **10B Property Watch** | ✅ Done | `property-watch-manager.js` |
+| **10A Cascade Tracker** | ✅ Done | `cascade-analyzer.js` |
 | 10C Navigation/Orphan | Queued | `navigation-bridge.js` |
 | 10D Network→State | Queued | `network-state-correlator.js` |
 | 10E Update Budget | Queued | `update-budget-monitor.js` |

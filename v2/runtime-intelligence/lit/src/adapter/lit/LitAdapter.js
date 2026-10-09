@@ -23,6 +23,12 @@ const _lifecycleGenerations = new WeakMap();
 const _pendingUpdateEvents = new WeakMap();
 const _updateStarts = new WeakMap();
 const _stateChangeInterceptors = new WeakMap(); // LitAdapter instance → interceptor[]
+const _renderStacks = new WeakMap();            // LitAdapter instance → { el, ownerId, startEventId }[]
+
+function _getStack(adapter) {
+    if (!_renderStacks.has(adapter)) _renderStacks.set(adapter, []);
+    return _renderStacks.get(adapter);
+}
 
 function _tag(el) {
     return el?.localName || el?.tagName?.toLowerCase?.() || el?.constructor?.name || 'lit-component';
@@ -108,6 +114,12 @@ class LitAdapter extends FrameworkAdapter {
         owner.connected = false;
         _pendingUpdateEvents.delete(el);
         _updateStarts.delete(el);
+        const disconnStack = _renderStacks.get(this);
+        if (disconnStack) {
+            const idx = disconnStack.findLastIndex ? disconnStack.findLastIndex(e => e.el === el)
+                : disconnStack.map(e => e.el).lastIndexOf(el);
+            if (idx !== -1) disconnStack.splice(idx, 1);
+        }
         return this.emit(RuntimeEventType.OWNER_DESTROYED, {
             owner,
             source: source || owner.source,
@@ -138,6 +150,29 @@ class LitAdapter extends FrameworkAdapter {
                 for (const fn of interceptors) {
                     try { fn(el, name, oldValue); } catch { /* never break app */ }
                 }
+            }
+        }
+
+        // Cascade detection: if another component is mid-update and it is a DIFFERENT
+        // element, this requestUpdate was triggered reactively — emit DEPENDENCY_TRIGGERED.
+        const renderStack = _renderStacks.get(this);
+        if (renderStack?.length) {
+            const parent = renderStack[renderStack.length - 1];
+            if (parent.el !== el) {
+                this.emit(RuntimeEventType.DEPENDENCY_TRIGGERED, {
+                    owner,
+                    correlation: { causedByEventId: parent.startEventId },
+                    evidence: {
+                        level: EvidenceLevel.ATTRIBUTION,
+                        attribution: AttributionQuality.FRAMEWORK_REPORTED,
+                        confidence: 0.85,
+                    },
+                    payload: {
+                        triggerProperty: name ?? null,
+                        triggerSource: 'reactive-cascade',
+                        triggeringOwnerId: parent.ownerId,
+                    },
+                });
             }
         }
 
@@ -203,6 +238,8 @@ class LitAdapter extends FrameworkAdapter {
             payload: {},
         });
         _updateStarts.set(el, { startedAt, eventId: event.id });
+        // Push onto render stack so child requestUpdate calls can detect cascade
+        _getStack(this).push({ el, ownerId: owner.id, startEventId: event.id });
         return event;
     }
 
@@ -229,6 +266,13 @@ class LitAdapter extends FrameworkAdapter {
         });
         _updateStarts.delete(el);
         _pendingUpdateEvents.delete(el);
+        // Pop from render stack
+        const stack = _renderStacks.get(this);
+        if (stack) {
+            const idx = stack.findLastIndex ? stack.findLastIndex(e => e.el === el)
+                : stack.map(e => e.el).lastIndexOf(el);
+            if (idx !== -1) stack.splice(idx, 1);
+        }
         return event;
     }
 
