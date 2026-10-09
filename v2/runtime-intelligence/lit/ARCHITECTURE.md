@@ -1,361 +1,341 @@
-# lit-debug-suite — Architecture & LLM Context
+# Runtime Intelligence — Architecture
 
-This document gives a complete mental model of the package: what it is, how every
-layer works, where Syndigo-specific code lives, and exactly what an LLM needs to
-know to continue work on it without re-reading all source files.
-
----
-
-## 1. What this package is
-
-`lit-debug-suite` is a **zero-overhead debug suite** for LitElement applications.
-It was extracted verbatim from the Syndigo `ruf-debug-panel` (12-tool system inside
-`ui-platform-elements/src/base/`) and refactored into a publishable, framework-
-generic npm package.
-
-**Three ways to use it:**
-| Mode | What you get |
-|------|-------------|
-| Chrome extension (no app changes) | Vitals + Network + Console tabs always; other tabs empty unless mixin is installed |
-| Mixin only (no panel) | All 12 tools collect data to `window.__LDS_*` globals; no UI |
-| Mixin + panel | Full floating panel with all 12 tabs populated |
+> Version: 2026-10-10 | Missions 01–10E complete
+> Read CLAUDE.md for operating constraints and the 4-artifact rule.
 
 ---
 
-## 2. Directory layout (annotated)
+## What this builds
 
-```
-lit-debug-suite/
-├── src/
-│   ├── core/                    ← 12 standalone tools, ZERO framework deps
-│   │   ├── gate.js              ← master on/off, per-tool flags
-│   │   ├── memory.js            ← mount/unmount/GC via FinalizationRegistry
-│   │   ├── perf.js              ← TTI + slow render tracking
-│   │   ├── error-boundary.js   ← wraps performUpdate, auto-POST crashes
-│   │   ├── prop-audit.js        ← render reasons (R2-A), property thrash (R2-B)
-│   │   ├── inspector.js         ← hover badge overlay, prop snapshot
-│   │   ├── cycle-detector.js    ← DFS cycle detection in update chains
-│   │   ├── event-tracer.js      ← custom event frequency table + timeline
-│   │   ├── slow-api.js          ← wraps objects to track slow method calls
-│   │   ├── console.js           ← console.error/warn ring buffer
-│   │   ├── vitals.js            ← LCP, CLS, INP, Long Tasks (PerformanceObserver)
-│   │   └── network.js           ← fetch + XHR patch, decoder plugin hook
-│   │
-│   ├── adapter/
-│   │   ├── FrameworkAdapter.js  ← abstract base (6 methods to implement)
-│   │   └── lit/
-│   │       └── LitAdapter.js    ← Lit 3 concrete impl (performUpdate etc.)
-│   │
-│   ├── panel/
-│   │   └── LdsDebugPanel.js     ← full 12-tab panel (~1400 lines LitElement)
-│   │                               registers <lds-debug-panel> custom element
-│   ├── LitDebugMixin.js         ← drop-in mixin — add to any LitElement class
-│   └── index.js                 ← barrel export of everything
-│
-├── custom/
-│   └── ui-platform/             ← ALL Syndigo-specific code lives here ONLY
-│       ├── FalcorDecoder.js     ← decodeFalcor(url, body) → decoded object
-│       ├── AciPlugin.js         ← attachToElement(el), installGlobalAciPatch()
-│       ├── SyndigoSlowApiPlugin.js ← finds/retries window.__dataObjectManager__
-│       ├── compat.js            ← __RUF_* → __LDS_* live getter aliases
-│       └── index.js             ← registers all three plugins on import
-│
-├── extension/
-│   ├── manifest.json            ← Chrome MV3; permissions: activeTab+scripting+storage
-│   ├── background.js            ← service worker: icon click → toggle via MAIN world
-│   ├── content.js               ← isolated world; only handles app-set __LDS_DEBUG__
-│   └── panel-host.js            ← DEPRECATED; kept for dev-only reference
-│
-├── test/
-│   └── panel-test.html          ← browser dev harness (import-map CDN Lit)
-│
-├── rollup.extension.config.js   ← bundles panel + Lit → extension/panel.bundle.js
-├── rollup.lib.config.js         ← ESM lib/ output (Lit external peer)
-└── package.json
-```
+A **live, in-browser developer tool** that tells you *why* your UI is broken or slow. Unlike Lighthouse
+(synthetic, cold-boot, no framework semantics), this tool runs on the developer's machine with full
+framework access — giving it the causal chain Lighthouse can never provide.
+
+**The product promise:**
+> After reproducing a bug, a developer opens the Intelligence tab and reads: problem → likely cause → source location → what to do next. No log scanning, no `console.log` archaeology.
 
 ---
 
-## 3. The global namespace
-
-Every runtime artifact lives on `window` under the `__LDS_` prefix.
-No `__RUF_` globals exist in the generic package — see §8 for compat aliases.
-
-### Control globals (set by you / the extension)
-| Global | Type | Purpose |
-|--------|------|---------|
-| `__LDS_DEBUG__` | `true \| false \| { toolKey: bool }` | Master gate |
-| `__LDS_APP_CONFIG__` | `{ debugEnabled: bool }` | App-level config fallback |
-| `__LDS_CRASH_ENDPOINT__` | `string` | URL for auto-POST on render crash |
-| `__LDS_CRASH_AUTO_POST__` | `bool` | Enable crash auto-POST |
-| `__LDS_CONTEXT_GETTER__` | `(el) => object` | Extra fields in inspector snapshot |
-| `__LDS_TAG_TO_FILE__` | `(tag) => string` | Maps element tag → source file path |
-| `__LDS_EVENTS_TRACE__` | `bool` | Enable event timeline recording |
-| `__LDS_EVENTS_FILTER__` | `string[]` | Filter events by name (all if unset) |
-| `__LDS_PROP_DEBUG__` | `string \| '*'` | Per-element prop change logging |
-| `__LDS_SLOW_API_MS__` | `number` | Slow API threshold ms (default 1000) |
-| `__LDS_THRASH_THRESHOLD__` | `number` | Prop sets/sec before thrash alert (default 5) |
-| `__LDS_STACK_FILTER_RE__` | `RegExp` | Stack frame app-only filter |
-
-### Data globals (written by tools, read by the panel)
-| Global | Written by | Contents |
-|--------|-----------|---------|
-| `__LDS_PERF__` | perf.js | `{ [tag]: { tti, renders } }` |
-| `__LDS_SLOW_RENDERS__` | perf.js | `Array<{ tag, elapsed, ts }>` |
-| `__LDS_ERRORS__` | error-boundary.js | `Array<{ tag, message, stack, ts }>` |
-| `__LDS_RENDER_REASONS__` | prop-audit.js | `{ [tag]: Array<{ props, ts }> }` |
-| `__LDS_THRASH__` | prop-audit.js | `Array<{ tag, prop, count, ts }>` |
-| `__LDS_CYCLES__` | cycle-detector.js | `Array<string[]>` (chains) |
-| `__LDS_EVENT_LOG__` | event-tracer.js | `{ timeline: [], freq: {} }` |
-| `__LDS_SLOW_API_LOG__` | slow-api.js | `Array<{ method, elapsed, ts }>` |
-| `__LDS_CONSOLE__` | console.js | `Array<{ level, args, ts }>` |
-| `__LDS_VITALS__` | vitals.js | `{ lcp, cls, inp, longTasks }` |
-| `__LDS_NETWORK_LOG__` | network.js | `Array<NetworkEntry>` (see §6) |
-| `__LDS_MEMORY__` | memory.js | `{ mounted: Set, unmounted: [], gcCount }` |
-| `__LDS_STORMS__` | memory.js | `Array<{ tag, count, ts }>` (mount storms) |
-| `__LDS_HISTORY__` | panel | `Array<snapshot>` (manual snapshots) |
-| `__LDS_SESSION_ID__` | panel | unique session string |
-
----
-
-## 4. How the mixin works
-
-`LitDebugMixin(superclass)` wraps any `LitElement` subclass.
+## Full Pipeline (with Mission 10A–10E additions)
 
 ```
-connectedCallback()
-  └─ _initPageTools() [once per page]
-       ├─ vitals.init()   — starts PerformanceObserver
-       └─ network.init()  — patches fetch + XHR
-  └─ memory.attach(this)         — always-on
-  └─ errorBoundary.attach(this)  — always-on
-  └─ [if enabled] perf.attach(this)
-  └─ [if enabled] propAudit.attach(this)
-  └─ [if enabled] inspector.attach(this)
-  └─ [if enabled] cycleDetector.attach(this)
-  └─ [if enabled] eventTracer.attach(this)
-  └─ [if enabled] slowApiMonitor.attach(this)
-  └─ [if enabled] console.attach(this)
-
-disconnectedCallback()
-  └─ detach() called on all tools (idempotent, no-throw)
-```
-
-Each tool's `attach(el)` method stores a WeakRef and patches LitElement lifecycle
-methods (e.g. `performUpdate`, `requestUpdate`, `updated`) on the element instance
-(not the prototype) so patching is isolated per element.
-
----
-
-## 5. How the Chrome extension works
-
-### Data flow (click toolbar icon → panel visible)
-
-```
-User clicks toolbar icon
-  │
-  ▼
-background.js (service worker — isolated from page)
-  │  reads chrome.storage.session for tab state
-  │  toggles: false → true
-  │
-  ├─ executeScript(world:'MAIN', func: set window.__LDS_DEBUG__ = true)
-  │    Runs inside the PAGE'S JavaScript realm
-  │
-  ├─ executeScript(world:'MAIN', files:['panel.bundle.js'])
-  │    Injects the IIFE bundle into the PAGE realm
-  │    → customElements.define('lds-debug-panel', LdsDebugPanel) runs
-  │       in the PAGE's customElements registry
-  │
-  └─ executeScript(world:'MAIN', func: mount <lds-debug-panel>)
-       document.body.appendChild(el) — panel is now visible
-```
-
-### Why MAIN world matters (critical)
-
-Chrome extensions have two JS realms per tab:
-
-| Realm | Who runs here | customElements registry |
-|-------|--------------|------------------------|
-| **MAIN world** | The page itself | Page's registry — `document.createElement('lds-debug-panel')` works |
-| **Isolated world** | Content scripts (default) | Separate registry — elements defined here are invisible to the page |
-
-If the panel bundle runs in the isolated world, `customElements.define(...)` goes
-into the isolated registry. When content.js then calls `document.createElement('lds-debug-panel')`,
-the page has no record of that element → it creates an `HTMLElement`, not `LdsDebugPanel` → blank.
-
-**This is the root cause of the original error.** `panel-host.js` created a `<script>`
-tag from the isolated world — the tag ran in MAIN world but `chrome.runtime` was
-unavailable there, causing the null crash. The fix: always use
-`executeScript({ world: 'MAIN' })` directly from the service worker.
-
-### What content.js does (and doesn't do)
-
-`content.js` runs in ISOLATED world. Its only job is: if the APP itself has set
-`window.__LDS_DEBUG__ = true` before the extension loaded, notify the background
-worker so it can inject the panel. It cannot touch custom elements.
-
-### Files that must exist in extension/ after build
-
-```
-extension/
-  manifest.json        ← checked into git
-  background.js        ← checked into git
-  content.js           ← checked into git
-  panel.bundle.js      ← GENERATED by npm run build:extension (NOT in git)
-  icons/
-    icon16.png         ← any PNG placeholder (required by Chrome)
-    icon48.png
-    icon128.png
+Browser runtime
+      │
+      │  Framework lifecycle events
+      │
+      ├─── NavigationBridge (Mission 10C)
+      │    src/integration/lit/navigation-bridge.js
+      │    Patches history.pushState / replaceState / listens popstate
+      │    Emits: NAVIGATION events
+      │    Orphan check (5s after nav): OWNER_CREATED without OWNER_DESTROYED
+      │    → DIAGNOSTIC { orphanSuspect:true, ownerId, tag, survivedNavigationCount }
+      │
+      ├─── NetworkStateCorrelator (Mission 10D)
+      │    src/integration/lit/network-state-correlator.js
+      │    Subscribes to store; correlates NETWORK_COMPLETED → STATE_CHANGED within windowMs
+      │    → DIAGNOSTIC { networkCorrelation:true, traceId, networkEventId, stateOwnerId, tracedMs }
+      │    EvidenceGraph auto-creates TRACE_CONTEXT edges when ≥2 DIAGNOSTICs share same traceId
+      │
+      ▼
+LitAdapter                      src/adapter/lit/LitAdapter.js
+      │
+      │  connect(el)            → OWNER_CREATED
+      │  disconnect(el)         → OWNER_DESTROYED (+ pops from _renderStacks)
+      │  recordUpdateRequested  → STATE_CHANGED (runs interceptor chain first)
+      │                           → DEPENDENCY_TRIGGERED if _renderStacks non-empty and parent.el≠el
+      │                           → UPDATE_REQUESTED
+      │  recordUpdateStarted    → UPDATE_STARTED (pushes to _renderStacks)
+      │  recordUpdateCompleted  → UPDATE_COMPLETED (pops from _renderStacks)
+      │
+      │  Cascade tracking (Mission 10A):
+      │    _renderStacks: WeakMap<LitAdapter, [{el, ownerId, startEventId}]>
+      │    When B's requestUpdate fires while A is on the stack:
+      │    emit DEPENDENCY_TRIGGERED { causedByEventId: A's UPDATE_STARTED.id }
+      │
+      │  State intercept (Mission 10B):
+      │    addStateChangeInterceptor(fn) → unsubscribe fn
+      │    Interceptors run before STATE_CHANGED; PropertyWatchManager uses this
+      │    to capture call stacks and detect threshold violations
+      │
+      ▼
+Evidence Store                  src/core/evidence-store.js
+      │  bounded (maxEntries=1000), immutable (deep-frozen), privacy-filtered
+      │  emit(input, context={}) → frozen UREP event
+      │  subscribe(fn)          → unsubscribe fn
+      │  snapshot({type?, ownerId?, traceId?}) → filtered event array
+      │  clear()
+      │  resolveReference(id)   → { status: 'present'|'evicted'|'unknown', sequence? }
+      │
+      │  Privacy: applyPrivacyPolicyToEvidenceInput() runs before createEvidenceEvent()
+      │  maskUrlQuery() strips query params from all URLs at capture
+      │
+      ├─── UpdateBudgetMonitor (Mission 10E)
+      │    src/core/update-budget-monitor.js   ← framework-neutral, src/core/
+      │    Subscribes to store (UPDATE_COMPLETED)
+      │    Rolling window per owner: if count > countPerWindow within windowMs
+      │    → DIAGNOSTIC { budgetViolation:true, ownerId, tag, updateCount, windowMs, countPerWindow }
+      │    Configurable: setBudget(tagName, {countPerWindow, windowMs})
+      │    Default: { countPerWindow:5, windowMs:100 }
+      │
+      ▼
+Incident Flight Recorder        src/core/incident-flight-recorder.js
+      │  States: IDLE → RECORDING → FROZEN
+      │  Trigger conditions: UPDATE_COMPLETED.durationMs ≥ slowUpdateThresholdMs (500ms default)
+      │                       or ERROR event
+      │  Rolling buffer: holds last N events before trigger
+      │  On freeze: snapshot captured for analysis
+      │
+      ▼
+Evidence Graph                  src/core/evidence-graph.js
+      │  Builds immutable DAG from frozen incident events
+      │
+      │  Edge types:
+      │    CAUSES             ← correlation.causedByEventId (confidence inherits from event)
+      │    PARENT             ← correlation.parentEventId   (confidence inherits from event)
+      │    TRACE_CONTEXT      ← shared correlation.traceId  (confidence 0.6, needs ≥2 events)
+      │    INTERACTION_CONTEXT← shared correlation.interactionId (confidence 0.7)
+      │
+      ├─── CascadeAnalyzer (Mission 10A)
+      │    src/core/cascade-analyzer.js   ← framework-neutral, src/core/
+      │    analyze(graph) → CascadeReport | null
+      │    Finds DEPENDENCY_TRIGGERED fan-out from a single root STATE_CHANGED
+      │    Reports: rootEventId, componentCount, depth, totalUpdateMs, branches, overReactingOwners
+      │
+      ▼
+Root Cause Grouper              src/core/root-cause.js
+      │  Heuristic scoring — NOT ML
+      │  Clusters events by causal chain; scores by edge weight + event type
+      │  Returns: { rootLabel, strength, cluster[], actionable }
+      │
+      ▼
+LitIntelligencePipeline         src/integration/lit/LitIntelligencePipeline.js
+      │  Orchestrator. Holds references to:
+      │    #recorder (IncidentFlightRecorder)
+      │    #grouper  (RootCauseGrouper)
+      │    #cascadeAnalyzer (CascadeAnalyzer)          ← Mission 10A
+      │    #watchManager   (PropertyWatchManager)      ← Mission 10B
+      │    #navBridge      (NavigationBridge)          ← Mission 10C
+      │    #networkCorrelator (NetworkStateCorrelator) ← Mission 10D
+      │    #budgetMonitor  (UpdateBudgetMonitor)       ← Mission 10E
+      │
+      │  start() → starts all sub-components, installs window globals:
+      │    window.__LDS_INTELLIGENCE_PIPELINE__ = this
+      │    window.__LDS_WATCH_PROPERTY__(tag, prop, opts)
+      │    window.__LDS_UNWATCH_PROPERTY__(tag, prop)
+      │  stop()  → stops all, clears window globals
+      │  resume() → clears incident, restarts recording
+      │
+      │  On incident: #analyze() → runs cascadeAnalyzer, grouper
+      │  On publish:  window.__LDS_CASCADE_REPORT__ = latestCascade
+      │               window.__LDS_EVIDENCE_STORE__  = store (for panel reads)
+      │
+      ▼
+panel-intelligence-presentation.js
+      src/integration/lit/panel-intelligence-presentation.js
+      Renders the Intelligence tab inside LdsDebugPanel.
+      Sections (in render order):
+        1. Current finding       — RootCauseGrouper output: rootLabel + actionable steps
+        2. Cascade               — CascadeAnalyzer: "1 change → N components → Xms total"
+        3. Property mutations    — PropertyWatchManager DIAGNOSTICs (watchAlert:true)
+        4. Navigation orphans    — NavigationBridge DIAGNOSTICs (orphanSuspect:true)
+        5. Network trigger       — NetworkStateCorrelator DIAGNOSTICs (networkCorrelation:true)
+        6. Over-rendering        — UpdateBudgetMonitor DIAGNOSTICs (budgetViolation:true)
+        7. Technical evidence    — Raw EvidenceGraph nodes + edges
 ```
 
 ---
 
-## 6. Network log entry shape
+## Framework Isolation Rule
 
-`LdsNetwork` calls `LdsNetwork.registerDecoder(fn)` to let plugins add decoded
-metadata. `FalcorDecoder` in `custom/ui-platform/` uses this hook.
+```
+src/core/         ← ZERO framework imports
+src/adapter/      ← ONE framework (Lit or React or Vue)
+src/integration/  ← wiring between adapter + core (one subfolder per framework)
+```
 
+Adding Vue:
+1. `src/adapter/vue/VueAdapter.js` — extend `FrameworkAdapter`, emit UREP from Vue lifecycle hooks (watchEffect, onMounted, onUnmounted)
+2. `src/integration/vue/VueIntelligencePipeline.js` — clone of LitIntelligencePipeline wired to VueAdapter
+3. `NavigationBridge`, `NetworkStateCorrelator`, `CascadeAnalyzer`, `UpdateBudgetMonitor` — **zero changes** (they only read from the store)
+4. `PropertyWatchManager` — Vue-specific version that wraps `reactive()` / `ref()` Proxy setters
+
+---
+
+## Evidence System
+
+### UREP Event shape
 ```js
-// NetworkEntry shape (window.__LDS_NETWORK_LOG__ items)
 {
-  url:      string,
-  method:   'GET' | 'POST' | ...,
-  status:   number,
-  duration: number,        // ms
-  size:     number,        // bytes (from Content-Length or response body)
-  ts:       number,        // Date.now()
-  decoded:  null | {       // set by registered decoder
-    protocol: 'falcor' | 'rest' | ...,
-    method:   string,      // e.g. 'get', 'call', 'set'
-    callPath: string,      // e.g. '[catalog,1]'
-    // ... decoder-specific fields
-  }
+  schemaVersion: '1.1',
+  id:        string,          // 'evt-N' — assigned by store
+  sequence:  number,          // monotonic counter
+  timestamp: number,          // ms since epoch (injected by store clock)
+  type:      RuntimeEventType,
+  framework: { name, version, adapterVersion },
+  owner:     { id, instanceId, lifecycleGeneration, kind, name, parentId } | null,
+  source:    { file, line, column, functionName } | null,
+  correlation: {
+    causedByEventId?: string,  // → CAUSES edge in EvidenceGraph
+    parentEventId?:  string,   // → PARENT edge
+    traceId?:        string,   // → TRACE_CONTEXT edges (needs ≥2 events)
+    interactionId?:  string,   // → INTERACTION_CONTEXT edges
+  },
+  evidence: {
+    level:       EvidenceLevel,
+    attribution: AttributionQuality,
+    confidence:  number | null,  // 0–1
+  },
+  payload: object,  // deep-frozen, event-specific
 }
 ```
 
+### Evidence Ladder (never violate)
+```
+OBSERVATION          "I saw this happen"          ← deterministic framework events
+CORRELATION          "These happened near each other" ← temporal proximity
+ATTRIBUTION          "This probably caused that"  ← framework-reported causality
+LIFETIME_VIOLATION   "This resource outlived its owner"
+RETAINER_CONFIRMED   "This reference is preventing GC"
+CAUSALITY_CONFIRMED  "I have proof this caused that"
+```
+
+Rules classify evidence — they do not manufacture stronger evidence.
+
+### EvidenceGraph edge types
+| Edge | Trigger | Confidence | Correct use |
+|------|---------|-----------|-------------|
+| CAUSES | `correlation.causedByEventId` | inherits from source event | Direct causal link (adapter-reported) |
+| PARENT | `correlation.parentEventId` | inherits from source event | Structural hierarchy (e.g. parent component) |
+| TRACE_CONTEXT | shared `correlation.traceId` (≥2 events) | 0.6 | Temporal grouping (network→state, not causation) |
+| INTERACTION_CONTEXT | shared `correlation.interactionId` (≥2 events) | 0.7 | Same user interaction session |
+
 ---
 
-## 7. Adding a new tool
+## Cascade Detection — Mission 10A
 
-1. Create `src/core/my-tool.js` — export a class with `attach(el)` / `detach(el)` / `init()`.
-   Write to a `window.__LDS_MY_TOOL__` global. No Lit imports.
-2. Export it from `src/index.js`.
-3. Import it in `src/LitDebugMixin.js` and call `attach`/`detach` in the mixin.
-4. Add a tool key to `src/core/gate.js` (`_toolEnabled('myTool')`).
-5. Add a tab to `src/panel/LdsDebugPanel.js` — search for `_renderEventsTab()` for a
-   simple list-tab pattern to copy.
+**Problem:** "I clicked one button and 20 components re-rendered. Which ones and why?"
+
+**Mechanism** (`_renderStacks` WeakMap in `LitAdapter`):
+1. `recordUpdateStarted(el)` → push `{ el, ownerId, startEventId }` onto adapter's render stack
+2. `recordUpdateCompleted(el)` → pop by `el` reference
+3. `recordUpdateRequested(el, name, oldValue)` → if stack non-empty AND `parent.el !== el`:
+   - The currently-rendering parent A is causing child B's update
+   - Emit `DEPENDENCY_TRIGGERED` with `correlation.causedByEventId = A.startEventId`
+4. `CascadeAnalyzer.analyze(graph)` finds all `DEPENDENCY_TRIGGERED` events, walks to root, computes fan-out
+
+**Why WeakMap per adapter instance (not module-level array):** Multi-adapter test safety. Each `LitAdapter` instance has its own stack — no cross-contamination.
 
 ---
 
-## 8. Syndigo compatibility (custom/ui-platform/)
+## Property Watching — Mission 10B
 
-The original package used `__RUF_*` globals. `custom/ui-platform/compat.js` installs
-live getter aliases so code that reads `window.__RUF_PERF__` gets `window.__LDS_PERF__`.
+**Problem:** "Something is setting `this.loading = true` and never clearing it. I can't find where."
 
-These aliases are NOT in the core package — they only activate when you import
-`lit-debug-suite/custom/ui-platform`.
+**Mechanism** (`addStateChangeInterceptor` in `LitAdapter`):
+1. `LitAdapter.addStateChangeInterceptor(fn)` → fn is called with `(el, name, oldValue)` before `STATE_CHANGED` is emitted
+2. `PropertyWatchManager.watch(tag, prop, {threshold, windowMs})` installs an interceptor on all connected elements matching `tag`
+3. On match: capture `new Error().stack`, parse via `parseRuntimeSourceLocation()`, emit `STATE_CHANGED { watchSource:true, source }`
+4. If mutation count exceeds `threshold` in `windowMs`: emit `DIAGNOSTIC { watchAlert:true, tag, prop, mutationCount }`
 
-**Syndigo plugin install order (happens automatically on import):**
-1. `FalcorDecoder` registered with `LdsNetwork.registerDecoder(decodeFalcor)`
-2. `SyndigoSlowApiPlugin.install()` — polls until `window.__dataObjectManager__` exists,
-   then calls `LdsSlowApiMonitor.wrapObject(dom, [...methods])`
-3. Compat aliases installed via `compat.js`
+**Window API:** `window.__LDS_WATCH_PROPERTY__('x-product-card', 'price')` — installed by `LitIntelligencePipeline.start()`
 
-**Per-element ACI tracing** (manual, in element connectedCallback):
-```js
-import { attachToElement } from 'lit-debug-suite/custom/ui-platform';
-connectedCallback() {
-  super.connectedCallback();
-  if (this.aci) attachToElement(this); // wraps this.aci.dispatch
-}
+---
+
+## Navigation & Orphan Detection — Mission 10C
+
+**Problem:** "App gets slower after 10 minutes of navigation. Heap snapshot grows but I can't tell which components are leaking."
+
+**Mechanism** (`NavigationBridge`):
+1. Patches `history.pushState` and `history.replaceState`; listens to `popstate`
+2. On navigation: emit `NAVIGATION { url: maskUrlQuery(href), type, timestamp }`
+3. After 5s delay: compare `store.snapshot({type:OWNER_CREATED})` vs `store.snapshot({type:OWNER_DESTROYED})`
+4. Owners born before nav with no DESTROYED entry → `DIAGNOSTIC { orphanSuspect:true, ownerId, tag, survivedNavigationCount }`
+5. `orphanCheckDelayMs:0` for synchronous test execution
+
+**Evidence level:** `CORRELATION` — destruction might legitimately be deferred (transitions, lazy cleanup).
+
+---
+
+## Network→State Correlation — Mission 10D
+
+**Problem:** "After this API call, 6 components re-rendered slowly. I don't know which state changes it triggered."
+
+**Mechanism** (`NetworkStateCorrelator`):
+1. Subscribes to store; on `NETWORK_COMPLETED`: create pending entry `{ traceId: 'net-trace-'+eventId, expiresAt: now + windowMs }`
+2. Bounded to 20 pending entries (oldest dropped on overflow)
+3. On `STATE_CHANGED` within window: emit `DIAGNOSTIC { networkCorrelation:true, traceId, networkEventId, stateOwnerId }` with `correlation.causedByEventId = networkEventId, traceId`
+4. Two STATE_CHANGEDs from same network call → two DIAGNOSTICs sharing `traceId` → EvidenceGraph creates `TRACE_CONTEXT` edges between them
+
+**Default window:** 500ms (configurable via `correlationWindowMs` constructor option)
+
+---
+
+## Update Budget Monitoring — Mission 10E
+
+**Problem:** "I set one property and 20 components re-rendered. Something is over-reacting to state changes it doesn't need."
+
+**Mechanism** (`UpdateBudgetMonitor`, rolling window):
+1. Subscribes to store (UPDATE_COMPLETED events)
+2. Per owner: push `{timestamp: now}`, prune entries older than `now - windowMs`
+3. If `pruned.length > countPerWindow`: emit `DIAGNOSTIC { budgetViolation:true, ownerId, tag, updateCount, windowMs, countPerWindow, totalMs }`
+4. Per-tag budget overrides via `setBudget(tagName, {countPerWindow, windowMs})`
+
+**Default budget:** `{ countPerWindow: 5, windowMs: 100 }` — fires when a component updates more than 5 times in 100ms.
+
+---
+
+## Panel Surface
+
+Intelligence tab layout (all in `panel-intelligence-presentation.js`):
+
+```
+┌─ Intelligence Tab ──────────────────────────────────┐
+│  Current finding                                    │  ← RootCauseGrouper: rootLabel + actionable steps
+│                                                     │
+│  ▶ Reactive cascade      [collapses]                │  ← CascadeAnalyzer: "N components, depth M, Xms"
+│  ▶ Property mutations    [collapses]                │  ← PropertyWatchManager DIAGNOSTICs
+│  ▶ Navigation orphans    [collapses]                │  ← NavigationBridge DIAGNOSTICs
+│  ▶ Network trigger       [collapses]                │  ← NetworkStateCorrelator DIAGNOSTICs
+│  ▶ Over-rendering        [collapses]                │  ← UpdateBudgetMonitor DIAGNOSTICs
+│                                                     │
+│  Technical evidence      [full graph]               │  ← raw EvidenceGraph nodes + edges
+└─────────────────────────────────────────────────────┘
+```
+
+Each diagnostic section reads from `window.__LDS_EVIDENCE_STORE__.snapshot({type:'diagnostic'})` and filters by its own payload flag.
+
+---
+
+## Adding a New Framework Adapter
+
+```
+1. src/adapter/<framework>/<Framework>Adapter.js
+   ├─ extend FrameworkAdapter
+   ├─ declare capabilities in constructor
+   └─ emit UREP events from framework lifecycle hooks:
+      connect()       → OWNER_CREATED
+      disconnect()    → OWNER_DESTROYED
+      onStateChange() → STATE_CHANGED + UPDATE_REQUESTED
+      onRenderStart() → UPDATE_STARTED
+      onRenderEnd()   → UPDATE_COMPLETED
+      onError()       → ERROR
+
+2. src/integration/<framework>/<Framework>IntelligencePipeline.js
+   └─ clone LitIntelligencePipeline, swap LitAdapter import
+
+3. Zero changes to src/core/
+   CascadeAnalyzer, UpdateBudgetMonitor, EvidenceGraph, RootCauseGrouper — all reused unchanged.
+   NavigationBridge — browser-level API, works for any SPA router.
+   NetworkStateCorrelator — store subscription, framework-neutral.
 ```
 
 ---
 
-## 9. Build system
+## Known Gaps
 
-| Script | Output | Notes |
-|--------|--------|-------|
-| `npm run build:extension` | `extension/panel.bundle.js` | Dev build, sourcemaps on |
-| `npm run build:extension:prod` | `extension/panel.bundle.js` | Minified via terser |
-| `npm run build:lib` | `lib/` | ESM, Lit external, tree-shakeable |
-| `npm run build` | both | `lib/` + minified extension bundle |
-| `npm run serve` | localhost:8080 | `npx serve .` for test/panel-test.html |
-
-`rollup.extension.config.js` bundles Lit **inline** (extensions have no import maps).
-`rollup.lib.config.js` marks Lit as external (consumers provide their own Lit).
-
----
-
-## 10. Panel tab → data source map
-
-| Tab | Key | Reads from |
-|-----|-----|-----------|
-| Summary | — | Aggregates from all globals |
-| Pinpoint | — | Combines perf + errors + thrash |
-| Vitals | vitals | `__LDS_VITALS__` |
-| Network | network | `__LDS_NETWORK_LOG__` |
-| Perf | perf | `__LDS_PERF__`, `__LDS_SLOW_RENDERS__` |
-| Errors | errorBoundary | `__LDS_ERRORS__` |
-| Console | console | `__LDS_CONSOLE__` |
-| Events | eventTracer | `__LDS_EVENT_LOG__.timeline`, `.freq` |
-| SlowAPI | slowApi | `__LDS_SLOW_API_LOG__` |
-| Memory | memory | `__LDS_MEMORY__`, `__LDS_STORMS__` |
-| History | — | `__LDS_HISTORY__` (manual snapshots) |
-| Env | — | `navigator.*`, `__LDS_SESSION_ID__` |
-
----
-
-## 11. What was changed from ruf-debug-panel
-
-| ruf-debug-panel | lit-debug-suite | Reason |
-|----------------|----------------|--------|
-| `__RUF_*` globals | `__LDS_*` globals | Generic namespace |
-| ACI tab | Events tab (key: `events`) | Generic: not every app has ACI |
-| `r.aciTimeline` | `r.eventsTimeline` | Field rename |
-| `r.aciFreq` | `r.eventsFreq` | Field rename |
-| `entry.falcor` | `entry.decoded` | Decoder is a plugin, not built-in |
-| Syndigo context in inspector | `window.__LDS_CONTEXT_GETTER__` hook | Generic hook |
-| Hardcoded file path | `window.__LDS_TAG_TO_FILE__` hook | Generic hook |
-| `ruf-element.js` Polymer `ready()` path | Removed | Lit-only |
-| `_propertiesChanged` | Removed | Polymer-only |
-| Falcor decoder inline | `custom/ui-platform/FalcorDecoder.js` | Syndigo-only |
-| ACI tracer inline | `custom/ui-platform/AciPlugin.js` | Syndigo-only |
-| DataObjectManager patch inline | `custom/ui-platform/SyndigoSlowApiPlugin.js` | Syndigo-only |
-
----
-
-## 12. Source reference (original files)
-
-All in `D:\Work\R7\generic-changes\ui-platform-elements\src\base\`:
-
-```
-ruf-vitals.js         → src/core/vitals.js
-ruf-console.js        → src/core/console.js
-ruf-network.js        → src/core/network.js + custom/ui-platform/FalcorDecoder.js
-ruf-perf.js           → src/core/perf.js
-ruf-prop-audit.js     → src/core/prop-audit.js
-ruf-error-boundary.js → src/core/error-boundary.js
-ruf-cycle-detector.js → src/core/cycle-detector.js
-ruf-inspector.js      → src/core/inspector.js
-ruf-aci-tracer.js     → src/core/event-tracer.js + custom/ui-platform/AciPlugin.js
-ruf-slow-api.js       → src/core/slow-api.js + custom/ui-platform/SyndigoSlowApiPlugin.js
-ruf-memory.js         → src/core/memory.js
-ruf-debug-panel.js    → src/panel/LdsDebugPanel.js
-```
-
----
-
-## 13. Known limitations / future work
-
-- **React / Angular**: `FrameworkAdapter` base class exists but no concrete impl yet.
-  See `src/adapter/FrameworkAdapter.js` for the 6 methods to implement.
-- **Extension on chrome:// pages**: Chrome blocks `executeScript` on internal pages —
-  the extension silently ignores these (caught in background.js catch block).
-- **CSP-locked pages**: Pages with strict CSP that block inline scripts may block
-  the panel bundle injection. Nothing to do without a CSP nonce approach.
-- **panel.bundle.js not in git**: Must be built before loading the extension.
-  Run `npm run build:extension` after cloning.
-- **Icons**: Placeholder PNGs required in `extension/icons/` — Chrome rejects the
-  extension without them even for unpacked load.
+- `panel-intelligence-presentation.js` couples to `_completeReplay()` private method — replace with `lds-replay-complete` event hook in a future panel-integration milestone
+- `DiagnosticPolicy` archived (`src/archive/`) — reconnect if dynamic per-route rule budgets become a real product requirement
+- `network.js`, `perf.js`, `memory.js` still write to `__LDS_*` globals only — full UREP migration needed before v1 release claim
+- `ResourceOwnershipLedger` in `src/future/` is fully tested (10 tests) — wire when `memory.js` emits `RESOURCE_ACQUIRED`/`RESOURCE_RELEASED`
+- Evidence capsule `aiPrompt` field is auto-generated — improve with structured problem framing once finding quality is validated in production
+- `window.__LDS_SET_UPDATE_BUDGET__` global — deferred; `budgetMonitor().setBudget()` via pipeline accessor achieves the same
