@@ -393,6 +393,130 @@ function _buildPinpointIssues(report) {
         issues.push(iss);
     });
 
+    // DOM Duplication
+    const domDupDiags = (typeof window !== 'undefined' && window.__LDS_EVIDENCE_STORE__)
+        ? (window.__LDS_EVIDENCE_STORE__.snapshot({ type: 'diagnostic' }) ?? [])
+            .filter(e => e.payload?.domDuplication === true)
+        : [];
+    if (domDupDiags.length > 0) {
+        const worst = domDupDiags.sort((a, b) => b.payload.instanceCount - a.payload.instanceCount)[0];
+        const p = worst.payload;
+        issues.push({
+            id: `dom-dup-${p.duplicateTag}`,
+            component: p.commonAncestorTag || '(shared ancestor)',
+            filePath: _tagToFilePath(p.commonAncestorTag || ''),
+            issueType: 'dom-duplication',
+            severity: p.identicalContent ? 'high' : 'medium',
+            details: `<${p.duplicateTag}> is instantiated ${p.instanceCount}× under <${p.commonAncestorTag}>${p.identicalContent ? ' with identical content' : ''}.`,
+            callStacks: [],
+            recommendation: `Hoist one shared <${p.duplicateTag}> instance to <${p.commonAncestorTag}> level. Toggle its content and visibility via a component property rather than mounting N instances.`,
+            observed: { instanceCount: p.instanceCount, identicalContent: p.identicalContent },
+        });
+    }
+
+    // Virtualization Candidates
+    const virtDiags = (typeof window !== 'undefined' && window.__LDS_EVIDENCE_STORE__)
+        ? (window.__LDS_EVIDENCE_STORE__.snapshot({ type: 'diagnostic' }) ?? [])
+            .filter(e => e.payload?.virtualizationOpportunity === true)
+        : [];
+    if (virtDiags.length > 0) {
+        const worst = virtDiags.sort((a, b) => b.payload.childCount - a.payload.childCount)[0];
+        const p = worst.payload;
+        issues.push({
+            id: `virt-${p.parentTag}-${p.childTag}`,
+            component: p.parentTag || '(list container)',
+            filePath: _tagToFilePath(p.parentTag || ''),
+            issueType: 'virtualization-opportunity',
+            severity: p.strength === 'high' ? 'high' : 'medium',
+            details: `<${p.childTag}> rendered ×${p.childCount} inside <${p.parentTag}> — ${Math.round(p.offScreenRatio * 100)}% off-screen.`,
+            callStacks: [],
+            recommendation: `Wrap the list in a virtual scroller. Use @lit-labs/virtualizer or a native <virtual-list>. This avoids rendering ${Math.round(p.offScreenRatio * p.childCount)} off-screen DOM nodes.`,
+            observed: { childCount: p.childCount, offScreenRatio: p.offScreenRatio, parentTag: p.parentTag },
+        });
+    }
+
+    // Expensive Paint
+    const expensivePaintDiags = (typeof window !== 'undefined' && window.__LDS_EVIDENCE_STORE__)
+        ? (window.__LDS_EVIDENCE_STORE__.snapshot({ type: 'diagnostic' }) ?? [])
+            .filter(e => e.payload?.expensivePaint === true)
+        : [];
+    for (const d of expensivePaintDiags) {
+        const p = d.payload;
+        issues.push({
+            id: `paint-css-${p.property}`,
+            component: p.exampleTag || '(multiple)',
+            filePath: _tagToFilePath(p.exampleTag || ''),
+            issueType: 'expensive-paint',
+            severity: p.elementCount > 30 ? 'high' : 'medium',
+            details: `${p.elementCount} elements use CSS property "${p.property}" which forces expensive GPU layer painting.`,
+            callStacks: [],
+            recommendation: `Reduce "${p.property}" usage to fewer than 10 elements. Apply will-change:transform sparingly — only on elements that animate continuously.`,
+            observed: { property: p.property, elementCount: p.elementCount },
+        });
+    }
+
+    // Slow FCP
+    const fcpDiag = (typeof window !== 'undefined' && window.__LDS_EVIDENCE_STORE__)
+        ? (window.__LDS_EVIDENCE_STORE__.snapshot({ type: 'diagnostic' }) ?? [])
+            .find(e => e.payload?.paintTiming === true && e.payload?.metric === 'first-contentful-paint' && e.payload?.valueMs > 3000)
+        : null;
+    if (fcpDiag) {
+        issues.push({
+            id: 'paint-fcp-slow',
+            component: '(page load)',
+            filePath: '',
+            issueType: 'paint-timing',
+            severity: 'high',
+            details: `First Contentful Paint is ${fcpDiag.payload.valueMs}ms (good threshold: <1800ms).`,
+            callStacks: [],
+            recommendation: 'Defer non-critical CSS, eliminate render-blocking resources, and reduce server response time.',
+            observed: { metric: 'first-contentful-paint', valueMs: fcpDiag.payload.valueMs },
+        });
+    }
+
+    // Worker Offload Candidates
+    const workerDiags = (typeof window !== 'undefined' && window.__LDS_EVIDENCE_STORE__)
+        ? (window.__LDS_EVIDENCE_STORE__.snapshot({ type: 'diagnostic' }) ?? [])
+            .filter(e => e.payload?.workerOpportunity === true)
+        : [];
+    if (workerDiags.length > 0) {
+        const worst = workerDiags.sort((a, b) => b.payload.durationMs - a.payload.durationMs)[0];
+        const p = worst.payload;
+        const urlShort = p.scriptUrl?.split('/')?.slice(-2)?.join('/') ?? '(anonymous)';
+        issues.push({
+            id: `worker-${urlShort}`,
+            component: '(main thread)',
+            filePath: p.scriptUrl || '',
+            issueType: 'worker-opportunity',
+            severity: 'medium',
+            details: `Main thread blocked for ${p.durationMs}ms by ${urlShort}${p.trigger === 'large-network-response' ? ` after ${p.networkResponseKB}KB network response` : ''}.`,
+            callStacks: [],
+            recommendation: `Move the processing in ${urlShort} to a Web Worker: new Worker(url) + postMessage for data transfer.`,
+            observed: { durationMs: p.durationMs, trigger: p.trigger, scriptUrl: p.scriptUrl },
+        });
+    }
+
+    // Idle Scheduling Candidates
+    const idleDiags = (typeof window !== 'undefined' && window.__LDS_EVIDENCE_STORE__)
+        ? (window.__LDS_EVIDENCE_STORE__.snapshot({ type: 'diagnostic' }) ?? [])
+            .filter(e => e.payload?.idleOpportunity === true)
+        : [];
+    if (idleDiags.length > 0) {
+        const worst = idleDiags.sort((a, b) => b.payload.durationMs - a.payload.durationMs)[0];
+        const p = worst.payload;
+        issues.push({
+            id: `idle-${p.ownerTag}`,
+            component: p.ownerTag || 'unknown',
+            filePath: _tagToFilePath(p.ownerTag || ''),
+            issueType: 'idle-scheduling-opportunity',
+            severity: 'medium',
+            details: `<${p.ownerTag}> runs a ${p.durationMs}ms update with no preceding user interaction (${p.trigger}).`,
+            callStacks: [],
+            recommendation: `Wrap the update trigger in requestIdleCallback(fn, {timeout:2000}) or scheduler.postTask(fn, {priority:'background'}).`,
+            observed: { durationMs: p.durationMs, trigger: p.trigger },
+        });
+    }
+
     const order = { critical: 0, high: 1, medium: 2, low: 3 };
     return issues.sort((a, b) => (order[a.severity] ?? 3) - (order[b.severity] ?? 3));
 }

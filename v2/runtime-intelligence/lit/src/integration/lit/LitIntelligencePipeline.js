@@ -16,6 +16,12 @@ import { BackgroundSessionStore } from '../../core/background-session-store.js';
 import { FalcorCallGraph } from '../../core/falcor-call-graph.js';
 import { SequentialApiDetector } from '../../core/sequential-api-detector.js';
 import { LdsNetwork } from '../../core/network.js';
+import { DomDuplicationAdvisor } from '../../core/dom-duplication-advisor.js';
+import { VirtualizationAdvisor } from '../../core/virtualization-advisor.js';
+import { PaintAdvisor } from '../../core/paint-advisor.js';
+import { WorkerOpportunityAdvisor } from '../../core/worker-opportunity-advisor.js';
+import { IdleSchedulingAdvisor } from '../../core/idle-scheduling-advisor.js';
+import { installLitOpportunitiesPanelPresentation } from './panel-opportunities-presentation.js';
 import {
     createReadyDeveloperSummary,
     createDeveloperIntelligenceSummary,
@@ -75,10 +81,15 @@ class LitIntelligencePipeline {
     #navBridge;
     #networkCorrelator;
     #budgetMonitor;
-    #backgroundStore    = null;
-    #falcorCallGraph    = null;
-    #sequentialDetector = null;
-    #cascadeDebounce    = null;
+    #backgroundStore         = null;
+    #falcorCallGraph         = null;
+    #sequentialDetector      = null;
+    #domDuplicationAdvisor   = null;
+    #virtualizationAdvisor   = null;
+    #paintAdvisor            = null;
+    #workerAdvisor           = null;
+    #idleAdvisor             = null;
+    #cascadeDebounce         = null;
     #unsubscribe = null;
     #latest = null;
     #latestCapsule = null;
@@ -126,6 +137,12 @@ class LitIntelligencePipeline {
             network: LdsNetwork,
             onOpportunity: () => this.#dispatchPanelUpdate(),
         });
+        this.#domDuplicationAdvisor = new DomDuplicationAdvisor({ store, windowTarget });
+        this.#virtualizationAdvisor = new VirtualizationAdvisor({ store, windowTarget });
+        this.#paintAdvisor = new PaintAdvisor({ store, windowTarget });
+        this.#workerAdvisor = new WorkerOpportunityAdvisor({ store, windowTarget });
+        this.#idleAdvisor = new IdleSchedulingAdvisor({ store });
+        installLitOpportunitiesPanelPresentation({ target: windowTarget });
         this.#recorder = new IncidentFlightRecorder({
             store,
             start: false,
@@ -152,6 +169,11 @@ class LitIntelligencePipeline {
         this.#budgetMonitor?.start();
         this.#falcorCallGraph?.start();
         this.#sequentialDetector?.start();
+        this.#domDuplicationAdvisor?.start();
+        this.#virtualizationAdvisor?.start();
+        this.#paintAdvisor?.start();
+        this.#workerAdvisor?.start();
+        this.#idleAdvisor?.start();
         if (this.#windowTarget) {
             this.#windowTarget.__LDS_INTELLIGENCE_PIPELINE__ = this;
             if (this.#falcorCallGraph) {
@@ -187,6 +209,11 @@ class LitIntelligencePipeline {
         this.#budgetMonitor?.stop();
         this.#falcorCallGraph?.stop();
         this.#sequentialDetector?.stop();
+        this.#domDuplicationAdvisor?.stop();
+        this.#virtualizationAdvisor?.stop();
+        this.#paintAdvisor?.stop();
+        this.#workerAdvisor?.stop();
+        this.#idleAdvisor?.stop();
         clearTimeout(this.#cascadeDebounce);
         return this;
     }
@@ -226,6 +253,12 @@ class LitIntelligencePipeline {
     backgroundHistory() {
         return this.#backgroundStore?.load() ?? [];
     }
+
+    domDuplicationAdvisor() { return this.#domDuplicationAdvisor ?? null; }
+    virtualizationAdvisor() { return this.#virtualizationAdvisor ?? null; }
+    paintAdvisor() { return this.#paintAdvisor ?? null; }
+    workerOpportunityAdvisor() { return this.#workerAdvisor ?? null; }
+    idleSchedulingAdvisor() { return this.#idleAdvisor ?? null; }
 
     exportSessionReport() {
         const entries = this.backgroundHistory();
@@ -302,10 +335,16 @@ class LitIntelligencePipeline {
         // update-budget-monitor write directly to the store. Dispatch a panel
         // refresh so sections that read the live store update immediately.
         if (event.type === RuntimeEventType.DIAGNOSTIC) {
-            if (event.payload?.networkCorrelation || event.payload?.budgetViolation) {
+            const p = event.payload;
+            if (p?.networkCorrelation || p?.budgetViolation) {
                 this.#dispatchPanelUpdate();
                 return;
             }
+            if (p?.domDuplication) { this.#dispatchPanelUpdate(); return; }
+            if (p?.virtualizationOpportunity) { this.#dispatchPanelUpdate(); return; }
+            if (p?.paintTiming || p?.expensivePaint) { this.#dispatchPanelUpdate(); return; }
+            if (p?.workerOpportunity) { this.#dispatchPanelUpdate(); return; }
+            if (p?.idleOpportunity) { this.#dispatchPanelUpdate(); return; }
         }
 
         // Mission 11D fix B: debounced cascade refresh — keep the cascade

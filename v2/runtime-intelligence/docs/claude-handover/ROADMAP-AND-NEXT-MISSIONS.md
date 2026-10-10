@@ -142,6 +142,41 @@ Start here only when the user explicitly starts a React consumer project.
 
 ---
 
+## Missions 12A–12E — Opportunities Advisor Series (2026-10-10)
+
+Five new structural/optimization advisors surfaced in a **dedicated "⚡ Opportunities" tab**
+(separate from Intelligence, which stays focused on incident-level root-cause analysis).
+
+All five advisors live in `src/core/` with zero framework imports — fully reusable by React/Vue.
+All emit `RuntimeEventType.DIAGNOSTIC` to the evidence store following the UREP evidence ladder.
+
+A new panel file `src/integration/lit/panel-opportunities-presentation.js` (created in 12A)
+hosts all five section renderers and injects the tab using the same prototype-patch mechanism as
+`panel-intelligence-presentation.js`.
+
+| Mission | Status | Pain solved | Key file |
+|---|---|---|---|
+| **12A** DomDuplication | OPEN | `<x-tooltip>` × 47 per item instead of 1 shared | `dom-duplication-advisor.js` |
+| **12B** Virtualization | OPEN | "which component needs virtual scroll + how many off-screen" | `virtualization-advisor.js` |
+| **12C** PaintAdvisor | OPEN | FP/FCP timing + expensive CSS (filter/backdrop-filter) | `paint-advisor.js` |
+| **12D** WorkerOpportunity | OPEN | Long task after large network response = Worker candidate | `worker-opportunity-advisor.js` |
+| **12E** IdleScheduling | OPEN | Background update with no user gesture = requestIdleCallback candidate | `idle-scheduling-advisor.js` |
+
+Implementation order: 12A → 12B → 12C → 12D → 12E  
+(12A also creates `panel-opportunities-presentation.js` with stubs for 12B–12E)
+
+Full specs: `docs/MISSION-12A-DOM-DUPLICATION.md` through `docs/MISSION-12E-IDLE-SCHEDULING-ADVISOR.md`  
+Feature docs: `docs/features/13-dom-duplication-advisor.md` through `docs/features/17-idle-scheduling-advisor.md`
+
+### Methodology decisions (non-negotiable for these missions)
+- WorkerOpportunityAdvisor subscribes to `NETWORK_COMPLETED` store events, NOT `window.__LDS_NETWORK_LOG__`
+- VirtualizationAdvisor uses `MutationObserver` + 300ms debounce (not a timer interval)
+- PaintAdvisor defers layout-thrash sub-detector to Mission 12F (too many false positives without adapter instrumentation)
+- IdleSchedulingAdvisor uses `STATE_CHANGED` as interaction proxy until `INTERACTION` events are wired
+- No `Element.prototype` patching anywhere in this series
+
+---
+
 ## Deferred missions (do not start yet)
 
 | Mission | Why deferred |
