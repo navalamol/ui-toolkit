@@ -79,7 +79,7 @@ class NetworkStateCorrelator {
 
     #addPending(networkEvent, now) {
         const entry = {
-            traceId: `net-trace-${networkEvent.id}`,
+            traceId: networkEvent.correlation?.traceId || `net-trace-${networkEvent.id}`,
             networkEventId: networkEvent.id,
             expiresAt: now + this.#windowMs,
             path: networkEvent.payload?.path ?? null,
@@ -95,8 +95,7 @@ class NetworkStateCorrelator {
         this.#pending = this.#pending.filter(p => p.expiresAt > now);
     }
 
-    #bestMatch(now) {
-        // Return the most recent pending correlation (closest to now, not yet expired)
+    #bestMatch() {
         return this.#pending.length > 0 ? this.#pending[this.#pending.length - 1] : null;
     }
 

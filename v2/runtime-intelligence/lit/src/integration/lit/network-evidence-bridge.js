@@ -6,6 +6,14 @@ import {
 import { evidenceStore } from '../../core/evidence-store.js';
 import { LdsNetwork } from '../../core/network.js';
 
+let _networkTraceSequence = 0;
+
+function _nextNetworkTraceId(entry) {
+    const startedAt = Number.isFinite(entry?.startTime) ? Math.round(entry.startTime) : Date.now();
+    _networkTraceSequence += 1;
+    return `net-trace-${startedAt}-${_networkTraceSequence}`;
+}
+
 function _safePath(entry) {
     const value = typeof entry?.url === 'string' ? entry.url : '';
     return value.split('?')[0].slice(0, 160) || null;
@@ -18,6 +26,9 @@ function recordLegacyNetworkEntry(entry, { store = evidenceStore } = {}) {
         framework: {
             name: 'browser',
             adapterVersion: 'legacy-network-bridge-1',
+        },
+        correlation: {
+            traceId: _nextNetworkTraceId(entry),
         },
         evidence: {
             level: EvidenceLevel.OBSERVATION,
