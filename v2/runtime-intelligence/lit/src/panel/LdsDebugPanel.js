@@ -1876,6 +1876,45 @@ class LdsDebugPanel extends LitElement {
                     </div>` : ''}
                 </div>`;
             });
+        } else if (this._falcorViewMode === 'originator') {
+            const graph = window.__LDS_FALCOR_CALL_GRAPH__;
+            if (!graph) {
+                content = html`<p class="empty">Originator data not available. Enable: <code>window.__LDS_FALCOR_VIEW__ = true</code> and reload.</p>`;
+            } else {
+                const bursts = graph.getBursts().slice().reverse();
+                if (!bursts.length) {
+                    content = html`<p class="empty">No bursts captured yet. Make Falcor calls to see originator analysis.</p>`;
+                } else {
+                    content = bursts.map((b, bi) => {
+                        const isOpen = this._falcorExpandedGrp === `orig-${bi}`;
+                        const fileShort = b.originatorFile ? b.originatorFile.split('/').pop() : '';
+                        const fnLabel = b.originatorFn && b.originatorFn !== 'unknown'
+                            ? b.originatorFn
+                            : '(unknown caller)';
+                        const msColor = b.totalMs > 2000 ? '#f38ba8' : b.totalMs > 800 ? '#f9e2af' : '#a6e3a1';
+                        return html`
+                        <div style="border:1px solid #313244;border-radius:6px;margin-bottom:6px;border-left:3px solid #cba6f7">
+                            <div style="padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;flex-wrap:wrap"
+                                @click=${() => { this._falcorExpandedGrp = isOpen ? null : `orig-${bi}`; }}>
+                                <span style="color:#cba6f7;font-weight:700">${fnLabel}</span>
+                                ${fileShort ? html`<span style="color:#585b70;font-size:11px">[${fileShort}:${b.originatorLine}]</span>` : ''}
+                                <span style="color:${msColor};font-size:11px;font-weight:bold">${b.callCount} calls · ${b.totalMs}ms</span>
+                                <span style="color:#6c7086;font-size:11px;margin-left:auto">${isOpen ? '▲' : '▼'}</span>
+                            </div>
+                            ${isOpen ? html`
+                            <div style="padding:0 12px 10px">
+                                <ul style="margin:4px 0;padding-left:16px;font-size:11px;color:#cdd6f4">
+                                    ${b.paths.map(p => html`<li style="margin:2px 0;word-break:break-all">${p || '(path unavailable)'}</li>`)}
+                                </ul>
+                                <div style="font-size:10px;color:#585b70;margin-top:4px">
+                                    Full originator: <code style="color:#cba6f7">${b.originatorFile || '?'}:${b.originatorLine}</code>
+                                    · inspect <code style="color:#cba6f7">window.__LDS_FALCOR_CALL_GRAPH__.getBursts()</code>
+                                </div>
+                            </div>` : ''}
+                        </div>`;
+                    });
+                }
+            }
         } else {
             const sessions = getSearchSessions(filtered);
             if (!sessions.length) {
@@ -1912,6 +1951,7 @@ class LdsDebugPanel extends LitElement {
                     ${viewBtn('grouped','Grouped')}
                     ${viewBtn('dataindex','By DataIndex')}
                     ${viewBtn('search','Search Sessions')}
+                    ${viewBtn('originator','Originator Tree')}
                 </div>
                 <span style="color:#6c7086;font-size:11px;margin-left:8px">${falcorAll.length} calls · ${totalPaths} paths · ${diList.length} dataIndex${diList.length===1?'':'es'}${dupePaths?html` · <span style="color:#fab387">${dupePaths} dup path${dupePaths===1?'':'s'}</span>`:''}
                 </span>
@@ -1943,7 +1983,44 @@ class LdsDebugPanel extends LitElement {
                     <span style="color:#fab387;font-size:10px">⚠ ${dupePaths} duplicate path${dupePaths===1?'':'s'} detected — same data requested in multiple separate calls. Consider batching these.</span>
                 </div>` : html`
                 <div style="color:#a6e3a1;font-size:10px">No duplicate paths — all requests are unique.</div>`}
-            </div>`;
+            </div>
+            ${this._renderFalcorSequentialSection()}`;
+    }
+
+    _renderFalcorSequentialSection() {
+        const detector = typeof window !== 'undefined' ? window.__LDS_SEQUENTIAL_API_DETECTOR__ : null;
+        if (!detector) return html``;
+        const opps = detector.getOpportunities();
+        if (!opps.length) return html``;
+
+        return html`
+        <div style="border-top:1px solid #313244;padding:12px;margin-top:8px">
+            <div style="font-weight:700;color:#f9e2af;margin-bottom:8px;font-size:12px">
+                ⚡ Promise.all Opportunities — ${opps.length} pattern${opps.length > 1 ? 's' : ''} detected
+            </div>
+            ${opps.slice().reverse().map(o => {
+                const fileShort = o.callerFile ? o.callerFile.split('/').pop() : '';
+                const fnLabel   = o.callerFn && o.callerFn !== 'unknown' ? o.callerFn : '(unknown caller)';
+                return html`
+                <details style="margin:6px 0;border-left:3px solid #f9e2af;padding:6px 10px;background:#1e1e2e;border-radius:4px">
+                    <summary style="cursor:pointer;font-weight:600;font-size:11px">
+                        <span style="color:#f9e2af">${fnLabel}</span>
+                        ${fileShort ? html`<span style="color:#585b70"> [${fileShort}:${o.callerLine}]</span>` : ''}
+                        <span style="color:#a6e3a1;margin-left:8px">${o.callCount} sequential calls</span>
+                        <span style="color:#f38ba8;margin-left:6px">~${Math.round(o.estimatedSavingsMs)}ms wasted</span>
+                    </summary>
+                    <div style="font-size:11px;margin:6px 0;color:#cdd6f4">
+                        URLs (${o.urls.length}):
+                        ${o.urls.slice(0, 3).map(u => html`<code style="margin-right:6px;font-size:10px;color:#89b4fa">${u}</code>`)}
+                        ${o.urls.length > 3 ? html`<span style="color:#585b70">+${o.urls.length - 3} more</span>` : ''}
+                    </div>
+                    <div style="font-size:10px;color:#585b70">
+                        Each call ~${Math.round(o.avgDurationMs)}ms avg · total ${Math.round(o.totalMs)}ms ·
+                        <strong style="color:#f9e2af">Refactor: wrap in Promise.all or a single batch request</strong>
+                    </div>
+                </details>`;
+            })}
+        </div>`;
     }
 
     // ── Performance ────────────────────────────────────────────────────────

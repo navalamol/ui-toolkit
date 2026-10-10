@@ -107,7 +107,7 @@ class NetworkStateCorrelator {
                 type: RuntimeEventType.DIAGNOSTIC,
                 owner: stateEvent.owner ?? null,
                 correlation: {
-                    causedByEventId: pending.networkEventId,
+                    causedByEventId: null,  // temporal proximity is CORRELATION, not causation
                     traceId: pending.traceId,
                 },
                 evidence: {

@@ -181,7 +181,7 @@ test('violationCount() tracks total budget violations emitted', () => {
 
 // ── 7. DIAGNOSTIC has causedByEventId linking to the trigger UPDATE_COMPLETED ─
 
-test('budget violation DIAGNOSTIC has causedByEventId referencing triggering UPDATE_COMPLETED', () => {
+test('budget violation DIAGNOSTIC uses traceId correlation, not causedByEventId (evidence honesty rule)', () => {
     const store = new EvidenceStore({ maxEntries: 200, privacyPolicy: false });
     const adapter = new LitAdapter({ store });
     const monitor = new UpdateBudgetMonitor({
@@ -197,12 +197,10 @@ test('budget violation DIAGNOSTIC has causedByEventId referencing triggering UPD
     const diag = store.snapshot({ type: RuntimeEventType.DIAGNOSTIC })
         .find(e => e.payload?.budgetViolation === true);
     assert.ok(diag, 'DIAGNOSTIC must exist');
-    assert.ok(diag.correlation?.causedByEventId, 'causedByEventId must be set');
-
-    // The referenced event should be an UPDATE_COMPLETED in the store
-    const ref = store.snapshot().find(e => e.id === diag.correlation.causedByEventId);
-    assert.ok(ref, 'causedByEventId must reference an existing event');
-    assert.equal(ref.type, RuntimeEventType.UPDATE_COMPLETED, 'referenced event must be UPDATE_COMPLETED');
+    // Repeated updates exceeding budget = CORRELATION not confirmed causation.
+    // causedByEventId must be null; the budget violation is identified via its payload.
+    assert.equal(diag.correlation?.causedByEventId ?? null, null,
+        'causedByEventId must be null for CORRELATION-level temporal evidence');
 
     monitor.stop();
 });

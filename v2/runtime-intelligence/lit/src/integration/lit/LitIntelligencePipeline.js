@@ -12,6 +12,10 @@ import { CascadeAnalyzer } from '../../core/cascade-analyzer.js';
 import { NavigationBridge } from './navigation-bridge.js';
 import { NetworkStateCorrelator } from './network-state-correlator.js';
 import { UpdateBudgetMonitor } from '../../core/update-budget-monitor.js';
+import { BackgroundSessionStore } from '../../core/background-session-store.js';
+import { FalcorCallGraph } from '../../core/falcor-call-graph.js';
+import { SequentialApiDetector } from '../../core/sequential-api-detector.js';
+import { LdsNetwork } from '../../core/network.js';
 import {
     createReadyDeveloperSummary,
     createDeveloperIntelligenceSummary,
@@ -71,6 +75,10 @@ class LitIntelligencePipeline {
     #navBridge;
     #networkCorrelator;
     #budgetMonitor;
+    #backgroundStore    = null;
+    #falcorCallGraph    = null;
+    #sequentialDetector = null;
+    #cascadeDebounce    = null;
     #unsubscribe = null;
     #latest = null;
     #latestCapsule = null;
@@ -107,6 +115,17 @@ class LitIntelligencePipeline {
         }
         this.#networkCorrelator = new NetworkStateCorrelator({ store });
         this.#budgetMonitor = new UpdateBudgetMonitor({ store });
+        if (_toolEnabled('monitorBackground')) {
+            this.#backgroundStore = new BackgroundSessionStore();
+        }
+        if (_toolEnabled('falcorView')) {
+            this.#falcorCallGraph = new FalcorCallGraph({ network: LdsNetwork });
+        }
+        // Sequential detector emits via onOpportunity callback (store-independent)
+        this.#sequentialDetector = new SequentialApiDetector({
+            network: LdsNetwork,
+            onOpportunity: () => this.#dispatchPanelUpdate(),
+        });
         this.#recorder = new IncidentFlightRecorder({
             store,
             start: false,
@@ -131,8 +150,17 @@ class LitIntelligencePipeline {
         this.#navBridge?.start();
         this.#networkCorrelator?.start();
         this.#budgetMonitor?.start();
+        this.#falcorCallGraph?.start();
+        this.#sequentialDetector?.start();
         if (this.#windowTarget) {
             this.#windowTarget.__LDS_INTELLIGENCE_PIPELINE__ = this;
+            if (this.#falcorCallGraph) {
+                this.#windowTarget.__LDS_FALCOR_CALL_GRAPH__ = this.#falcorCallGraph;
+            }
+            if (this.#sequentialDetector) {
+                this.#windowTarget.__LDS_SEQUENTIAL_API_DETECTOR__ = this.#sequentialDetector;
+            }
+            this.#windowTarget.__LDS_EXPORT_SESSION_REPORT__ = () => this.exportSessionReport();
             if (_toolEnabled('intelligence')) {
                 if (this.#presentInPanel) {
                     installLitIntelligencePanelPresentation({ target: this.#windowTarget });
@@ -157,6 +185,9 @@ class LitIntelligencePipeline {
         this.#navBridge?.stop();
         this.#networkCorrelator?.stop();
         this.#budgetMonitor?.stop();
+        this.#falcorCallGraph?.stop();
+        this.#sequentialDetector?.stop();
+        clearTimeout(this.#cascadeDebounce);
         return this;
     }
 
@@ -182,6 +213,50 @@ class LitIntelligencePipeline {
 
     budgetMonitor() {
         return this.#budgetMonitor ?? null;
+    }
+
+    falcorCallGraph() {
+        return this.#falcorCallGraph ?? null;
+    }
+
+    sequentialApiDetector() {
+        return this.#sequentialDetector ?? null;
+    }
+
+    backgroundHistory() {
+        return this.#backgroundStore?.load() ?? [];
+    }
+
+    exportSessionReport() {
+        const entries = this.backgroundHistory();
+        if (!entries.length) return '<p style="font:14px monospace;padding:20px">No background history recorded. Set window.__LDS_MONITOR_BACKGROUND__ = true to enable.</p>';
+        const rows = entries.map(e => {
+            const cascade = e.cascadeSummary
+                ? `${e.cascadeSummary.triggerCount} triggers · depth ${e.cascadeSummary.depth} · ${e.cascadeSummary.totalUpdateMs.toFixed(1)}ms`
+                : '—';
+            return `<tr>
+                <td>${new Date(e.timestamp).toLocaleTimeString()}</td>
+                <td title="${e.pageUrl}">${e.pageUrl.split('/').pop() || '/'}</td>
+                <td>${e.title}</td>
+                <td>${e.rootLabel}${e.strength ? ` (${e.strength})` : ''}</td>
+                <td>${cascade}</td>
+                <td>${e.networkCorrelationCount}</td>
+                <td>${e.budgetViolationCount}</td>
+            </tr>`;
+        }).join('');
+        return `<!doctype html><html><head><meta charset="utf-8">
+            <title>LDS Session Report — ${new Date().toLocaleString()}</title>
+            <style>body{font:14px monospace;padding:20px;background:#1e1e2e;color:#cdd6f4}
+            table{border-collapse:collapse;width:100%}
+            th,td{border:1px solid #313244;padding:6px 10px;text-align:left}
+            th{background:#181825;color:#89b4fa}</style>
+            </head><body>
+            <h2 style="color:#89b4fa">LDS Session Report — ${new Date().toLocaleString()}</h2>
+            <table><thead><tr>
+                <th>Time</th><th>Page</th><th>Finding</th><th>Root Cause</th>
+                <th>Cascade</th><th>Net Corr.</th><th>Budget Viol.</th>
+            </tr></thead><tbody>${rows}</tbody></table>
+            </body></html>`;
     }
 
     /**
@@ -223,6 +298,30 @@ class LitIntelligencePipeline {
     }
 
     #onEvidence(event) {
+        // Mission 11D fix A: DIAGNOSTIC events from network-state-correlator and
+        // update-budget-monitor write directly to the store. Dispatch a panel
+        // refresh so sections that read the live store update immediately.
+        if (event.type === RuntimeEventType.DIAGNOSTIC) {
+            if (event.payload?.networkCorrelation || event.payload?.budgetViolation) {
+                this.#dispatchPanelUpdate();
+                return;
+            }
+        }
+
+        // Mission 11D fix B: debounced cascade refresh — keep the cascade
+        // display current even when no error or slow render is active.
+        if (event.type === RuntimeEventType.DEPENDENCY_TRIGGERED) {
+            clearTimeout(this.#cascadeDebounce);
+            this.#cascadeDebounce = setTimeout(() => {
+                if (this.#recorder.incident()) return; // frozen crash takes priority
+                const buf = this.#recorder.snapshot();
+                if (buf.length > 0) {
+                    this.#analyze(event, this.#snapshotRollingIncident(event, 'cascade_refresh'));
+                }
+            }, 300);
+            return;
+        }
+
         const reason = _incidentReasonFor(event, this.#slowUpdateThresholdMs);
         if (!reason) return;
 
@@ -322,17 +421,42 @@ class LitIntelligencePipeline {
         });
     }
 
-    #publish() {
+    #dispatchPanelUpdate() {
         if (!this.#windowTarget) return;
-        // This global is intentionally a compact developer view. Heavy forensic
-        // evidence is available only through __LDS_INTELLIGENCE_PIPELINE__.exportCapsule().
-        this.#windowTarget.__LDS_INTELLIGENCE__ = this.#latest;
         this.#windowTarget.__LDS_CASCADE_REPORT__ = this.#latestCascade;
         const EventCtor = this.#windowTarget.CustomEvent;
         if (typeof this.#windowTarget.dispatchEvent === 'function' && typeof EventCtor === 'function') {
             this.#windowTarget.dispatchEvent(new EventCtor('lds-intelligence-updated', {
                 detail: this.#latest,
             }));
+        }
+    }
+
+    #publish() {
+        if (!this.#windowTarget) return;
+        // This global is intentionally a compact developer view. Heavy forensic
+        // evidence is available only through __LDS_INTELLIGENCE_PIPELINE__.exportCapsule().
+        this.#windowTarget.__LDS_INTELLIGENCE__ = this.#latest;
+        this.#dispatchPanelUpdate();
+
+        // Mission 11C: persist compact finding to localStorage when MonitorInBackground is active
+        if (this.#backgroundStore && this.#latest?.problem) {
+            const diags = this.#store.snapshot({ type: 'diagnostic' });
+            this.#backgroundStore.push({
+                pageUrl: this.#windowTarget.location?.href ?? '',
+                timestamp: Date.now(),
+                title: this.#latest.problem ?? 'No finding',
+                rootLabel: this.#latest.rootCause?.rootLabel ?? '',
+                strength: this.#latest.rootCause?.strength ?? '',
+                cascadeSummary: this.#latestCascade?.hasCascade ? {
+                    triggerCount:  this.#latestCascade.triggerCount,
+                    componentCount: this.#latestCascade.componentCount,
+                    depth:         this.#latestCascade.depth,
+                    totalUpdateMs: this.#latestCascade.totalUpdateMs,
+                } : null,
+                networkCorrelationCount: diags.filter(d => d.payload?.networkCorrelation).length,
+                budgetViolationCount:    diags.filter(d => d.payload?.budgetViolation).length,
+            });
         }
     }
 }

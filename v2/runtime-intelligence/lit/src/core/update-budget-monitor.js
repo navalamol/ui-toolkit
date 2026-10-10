@@ -17,6 +17,7 @@ class UpdateBudgetMonitor {
     #tagBudgets = new Map();            // tagName → { countPerWindow, windowMs }
     #windows = new Map();               // ownerId → [{ timestamp }]
     #ownerMeta = new Map();             // ownerId → { tag }
+    #violating = new Set();             // ownerIds currently in a violation episode
     #unsubscribe = null;
     #active = false;
     #violationCount = 0;
@@ -43,6 +44,7 @@ class UpdateBudgetMonitor {
         this.#active = false;
         if (this.#unsubscribe) { this.#unsubscribe(); this.#unsubscribe = null; }
         this.#windows.clear();
+        this.#violating.clear();
         return this;
     }
 
@@ -85,32 +87,39 @@ class UpdateBudgetMonitor {
         this.#windows.set(ownerId, pruned);
 
         if (pruned.length > budget.countPerWindow) {
-            this.#violationCount += 1;
-            const totalMs = pruned.length > 0
-                ? Math.round((pruned[pruned.length - 1].timestamp - pruned[0].timestamp) * 10) / 10
-                : 0;
-            this._onViolation?.({ ownerId, tag, updateCount: pruned.length, budget, totalMs });
-            try {
-                this.#store.emit({
-                    type: RuntimeEventType.DIAGNOSTIC,
-                    owner: event.owner,
-                    correlation: { causedByEventId: event.id },
-                    evidence: {
-                        level: EvidenceLevel.CORRELATION,
-                        attribution: AttributionQuality.TEMPORAL_INFERENCE,
-                        confidence: 0.7,
-                    },
-                    payload: {
-                        budgetViolation: true,
-                        ownerId,
-                        tag,
-                        updateCount: pruned.length,
-                        windowMs: budget.windowMs,
-                        countPerWindow: budget.countPerWindow,
-                        totalMs,
-                    },
-                });
-            } catch { /* never break the app */ }
+            // Emit once per continuous violation episode — skip if already in violation
+            if (!this.#violating.has(ownerId)) {
+                this.#violating.add(ownerId);
+                this.#violationCount += 1;
+                const totalMs = pruned.length > 0
+                    ? Math.round((pruned[pruned.length - 1].timestamp - pruned[0].timestamp) * 10) / 10
+                    : 0;
+                this._onViolation?.({ ownerId, tag, updateCount: pruned.length, budget, totalMs });
+                try {
+                    this.#store.emit({
+                        type: RuntimeEventType.DIAGNOSTIC,
+                        owner: event.owner,
+                        correlation: { causedByEventId: null },
+                        evidence: {
+                            level: EvidenceLevel.CORRELATION,
+                            attribution: AttributionQuality.TEMPORAL_INFERENCE,
+                            confidence: 0.7,
+                        },
+                        payload: {
+                            budgetViolation: true,
+                            ownerId,
+                            tag,
+                            updateCount: pruned.length,
+                            windowMs: budget.windowMs,
+                            countPerWindow: budget.countPerWindow,
+                            totalMs,
+                        },
+                    });
+                } catch { /* never break the app */ }
+            }
+        } else {
+            // Recovered from violation — re-arm for next episode
+            this.#violating.delete(ownerId);
         }
     }
 }

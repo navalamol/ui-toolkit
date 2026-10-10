@@ -139,9 +139,11 @@ test('two state changes from same network call produce shared traceId and TRACE_
     assert.equal(traceIds.size, 1, 'both DIAGNOSTICs must share the same traceId');
     assert.ok([...traceIds][0]?.startsWith('net-trace-'), 'traceId must start with net-trace-');
 
-    // Both must have causedByEventId
+    // Temporal CORRELATION must NOT set causedByEventId (evidence honesty rule):
+    // proximity is correlation, not confirmed causation. Link via traceId only.
     for (const d of diags) {
-        assert.ok(d.correlation?.causedByEventId, 'causedByEventId must reference the network event');
+        assert.equal(d.correlation?.causedByEventId ?? null, null,
+            'causedByEventId must be null for CORRELATION-level temporal evidence');
     }
 
     // Build a graph — two events share a traceId → TRACE_CONTEXT edge

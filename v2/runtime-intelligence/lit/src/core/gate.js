@@ -22,6 +22,7 @@
  *   window.__LDS_RESOURCE_TRACKER__   = true   // Phase 9 resource lifetime model
  *   window.__LDS_WORKFLOW_BASELINE__  = true   // Phase 10 workflow baseline tracking
  *   window.__LDS_FALCOR_VIEW__        = true   // Phase 11 Falcor network toolkit tab
+ *   window.__LDS_MONITOR_BACKGROUND__ = true   // Mission 11C background session persistence
  */
 
 function _getDebugFlag() {
@@ -36,19 +37,20 @@ function _toolEnabled(toolKey) {
     if (typeof window === 'undefined') return false;
 
     // Per-tool standalone flags — work without master flag
-    if (toolKey === 'perf'          && window.__LDS_PERF_ENABLED__)     return true;
-    if (toolKey === 'propAudit'     && window.__LDS_PROP_DEBUG__)        return true;
-    if (toolKey === 'inspector'     && window.__LDS_INSPECTOR__)         return true;
-    if (toolKey === 'eventTracer'   && window.__LDS_EVENTS_TRACE__)      return true;
-    if (toolKey === 'slowApi'       && window.__LDS_SLOW_API__)          return true;
-    if (toolKey === 'console'       && window.__LDS_CONSOLE_ENABLED__)   return true;
-    if (toolKey === 'vitals'        && window.__LDS_VITALS_ENABLED__)    return true;
-    if (toolKey === 'network'       && window.__LDS_NETWORK_ENABLED__)   return true;
-    if (toolKey === 'intelligence'  && window.__LDS_INTELLIGENCE_ENABLED__) return true;
-    if (toolKey === 'cycleDetector' && window.__LDS_CYCLE_DETECT__)      return true;
-    if (toolKey === 'resourceTracker' && window.__LDS_RESOURCE_TRACKER__) return true;
-    if (toolKey === 'workflowBaseline' && window.__LDS_WORKFLOW_BASELINE__) return true;
-    if (toolKey === 'falcorView'      && window.__LDS_FALCOR_VIEW__)     return true;
+    if (toolKey === 'perf'             && window.__LDS_PERF_ENABLED__)        return true;
+    if (toolKey === 'propAudit'        && window.__LDS_PROP_DEBUG__)           return true;
+    if (toolKey === 'inspector'        && window.__LDS_INSPECTOR__)            return true;
+    if (toolKey === 'eventTracer'      && window.__LDS_EVENTS_TRACE__)         return true;
+    if (toolKey === 'slowApi'          && window.__LDS_SLOW_API__)             return true;
+    if (toolKey === 'console'          && window.__LDS_CONSOLE_ENABLED__)      return true;
+    if (toolKey === 'vitals'           && window.__LDS_VITALS_ENABLED__)       return true;
+    if (toolKey === 'network'          && window.__LDS_NETWORK_ENABLED__)      return true;
+    if (toolKey === 'intelligence'     && window.__LDS_INTELLIGENCE_ENABLED__) return true;
+    if (toolKey === 'cycleDetector'    && window.__LDS_CYCLE_DETECT__)         return true;
+    if (toolKey === 'resourceTracker'  && window.__LDS_RESOURCE_TRACKER__)     return true;
+    if (toolKey === 'workflowBaseline' && window.__LDS_WORKFLOW_BASELINE__)    return true;
+    if (toolKey === 'falcorView'       && window.__LDS_FALCOR_VIEW__)          return true;
+    if (toolKey === 'monitorBackground' && window.__LDS_MONITOR_BACKGROUND__)  return true;
 
     const flag = _getDebugFlag();
     if (!flag) return false;

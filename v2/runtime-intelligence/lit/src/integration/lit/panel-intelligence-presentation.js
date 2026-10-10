@@ -131,32 +131,32 @@ function _renderNetworkCorrelationSection(target) {
         ?.filter?.(e => e.payload?.networkCorrelation === true) ?? [];
     if (links.length === 0) return '';
 
-    // Group by traceId — show one entry per network call, newest first
-    const byTrace = new Map();
+    // Group by networkPath+method — accumulate count and keep the most-recent tracedMs.
+    // This shows total state-change pressure per path across the whole session (no "replacing").
+    const byPath = new Map();
     for (const d of links) {
-        const tid = d.payload.traceId;
-        if (!byTrace.has(tid)) byTrace.set(tid, []);
-        byTrace.get(tid).push(d);
+        const { networkPath, networkMethod, tracedMs } = d.payload;
+        const key  = `${networkMethod ?? 'GET'}:${networkPath ?? '(unknown)'}`;
+        const prev = byPath.get(key) ?? { count: 0, tracedMs: 0, networkPath, networkMethod };
+        byPath.set(key, { ...prev, count: prev.count + 1, tracedMs: Math.max(prev.tracedMs, tracedMs ?? 0) });
     }
-    const traces = [...byTrace.values()].slice(-5).reverse(); // latest 5 network calls
+    const rows = [...byPath.values()].sort((a, b) => b.count - a.count).slice(0, 20);
 
     return html`
         <details style="margin-top:10px;border:1px solid #313244;border-left:3px solid #cba6f7;border-radius:7px;padding:8px 10px;">
             <summary style="cursor:pointer;color:#cba6f7;font-weight:700;">
-                Network → State — ${byTrace.size} correlated network call${byTrace.size === 1 ? '' : 's'}
+                Network → State — ${byPath.size} path${byPath.size === 1 ? '' : 's'} · ${links.length} total correlations
             </summary>
             <div style="margin-top:8px;font-size:11px;color:#bac2de;line-height:1.6;">
-                <div style="margin-bottom:6px;color:#6c7086;">State changes that occurred within the correlation window after a network call completed.</div>
+                <div style="margin-bottom:6px;color:#6c7086;">State changes that occurred within the correlation window after a network call completed. Counts accumulate across the session.</div>
                 <ul style="margin:0;padding-left:16px;">
-                    ${traces.map(group => {
-                        const first = group[0];
-                        const method = first.payload.networkMethod ?? 'GET';
-                        const path = first.payload.networkPath ?? '(unknown)';
-                        const ms = first.payload.tracedMs ?? '?';
-                        const stateCount = group.length;
+                    ${rows.map(r => {
+                        const method = r.networkMethod ?? 'GET';
+                        const path   = r.networkPath ?? '(unknown)';
                         return html`<li>
                             <code style="color:#89b4fa;">${method} ${path}</code>
-                            → ${stateCount} state change${stateCount === 1 ? '' : 's'} within ${ms}ms
+                            → ${r.count} state change${r.count === 1 ? '' : 's'}
+                            <span style="color:#6c7086;">(latest: ${r.tracedMs}ms)</span>
                         </li>`;
                     })}
                 </ul>
@@ -197,6 +197,52 @@ function _renderOrphanSection(target) {
                 </ul>
                 <div style="margin-top:6px;color:#6c7086;font-size:10px;">Evidence level: correlation (temporal). Confirm with DevTools Memory snapshot.</div>
             </div>
+        </details>
+    `;
+}
+
+function _renderBackgroundHistorySection(target) {
+    const pipeline = target?.__LDS_INTELLIGENCE_PIPELINE__;
+    if (!pipeline) return '';
+    const history = pipeline.backgroundHistory?.() ?? [];
+    if (!history.length) return '';
+
+    // Group by pageUrl, newest-page first
+    const byPage = new Map();
+    for (const e of [...history].reverse()) {
+        const page = e.pageUrl || 'unknown';
+        if (!byPage.has(page)) byPage.set(page, []);
+        byPage.get(page).push(e);
+    }
+
+    const pageSections = [...byPage.entries()].map(([url, entries]) => {
+        const rows = entries.map(e => {
+            const time    = new Date(e.timestamp).toLocaleTimeString();
+            const cascade = e.cascadeSummary ? `cascade: ${e.cascadeSummary.triggerCount} triggers` : '';
+            const net     = e.networkCorrelationCount ? `${e.networkCorrelationCount} net` : '';
+            const budget  = e.budgetViolationCount    ? `${e.budgetViolationCount} budget` : '';
+            const tags    = [cascade, net, budget].filter(Boolean).join(' · ');
+            return html`<li style="margin:4px 0">
+                <span style="color:#585b70">${time}</span>
+                <strong style="color:#cdd6f4"> ${e.title || 'No finding'}</strong>
+                ${tags ? html`<small style="color:#6c7086"> (${tags})</small>` : ''}
+            </li>`;
+        });
+        const short = url.length > 60 ? '…' + url.slice(-57) : url;
+        return html`<details style="margin:6px 0">
+            <summary style="cursor:pointer;font-weight:600;color:#89b4fa">${short} — ${entries.length} incident${entries.length > 1 ? 's' : ''}</summary>
+            <ul style="margin:4px 0 0 16px;padding:0;list-style:none">${rows}</ul>
+        </details>`;
+    });
+
+    return html`
+        <details open style="margin-top:10px;border:1px solid #313244;border-left:3px solid #89b4fa;border-radius:7px;padding:8px 10px;background:#181825">
+            <summary style="cursor:pointer;color:#89b4fa;font-weight:700;">
+                📼 Background History — ${history.length} incident${history.length > 1 ? 's' : ''} across ${byPage.size} page${byPage.size > 1 ? 's' : ''}
+            </summary>
+            <div style="margin-top:6px;font-size:11px;color:#a6e3a1;margin-bottom:6px;">MonitorInBackground is active — findings persist across navigation.</div>
+            ${pageSections}
+            <div style="margin-top:6px;font-size:10px;color:#585b70">Export: <code style="color:#cba6f7;">window.__LDS_EXPORT_SESSION_REPORT__()</code></div>
         </details>
     `;
 }
@@ -275,6 +321,7 @@ function _renderIntelligenceTab(target) {
         ${_renderOrphanSection(target)}
         ${_renderNetworkCorrelationSection(target)}
         ${_renderBudgetViolationSection(target)}
+        ${_renderBackgroundHistorySection(target)}
 
         <details style="margin-top:14px;border-top:1px solid #313244;padding-top:8px;">
             <summary style="cursor:pointer;color:#89b4fa;">Technical evidence (optional)</summary>

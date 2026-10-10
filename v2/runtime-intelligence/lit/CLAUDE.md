@@ -61,6 +61,19 @@ Already-defined protocol events waiting to be wired: `DEPENDENCY_TRIGGERED`, `NA
 
 ---
 
+## Quality Rule (non-negotiable)
+
+**Five features at 100% quality beats thirty at 70%.**
+
+Before marking any feature done, ask:
+1. **Would a developer encountering this for the first time immediately understand what action to take?** No → fix the panel copy.
+2. **Does every finding point to a specific function, file, or component — not a vague class?** No → improve the analyzer output.
+3. **Does the panel section stay accurate as the app runs (no stale data, no replace-instead-of-accumulate)?** No → fix the re-render path.
+
+If any answer is No → fix it before declaring the mission done. Ship fewer things, ship them right.
+
+---
+
 ## Evidence Ladder (never violate)
 
 ```
