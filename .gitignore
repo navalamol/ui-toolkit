@@ -1,3 +1,7 @@
 lit - Copy
 react
 lit/node_modules
+v1/lit/node_modules
+/v1/lit/node_modules
+**/**/node_modules
+1*
