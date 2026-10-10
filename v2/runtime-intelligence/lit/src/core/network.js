@@ -70,8 +70,9 @@ function init() {
         const body   = typeof args[1]?.body === 'string' ? args[1].body : null;
         const t0     = performance.now();
         // Capture call stack synchronously at fetch() call site (before async).
-        // Gated so stack capture only runs when Falcor analysis is enabled.
-        const callStack = window.__LDS_FALCOR_VIEW__ ? new Error().stack : undefined;
+        // Any active LDS debug flag enables capture — not just __LDS_FALCOR_VIEW__.
+        const callStack = (window.__LDS_DEBUG__ || window.__LDS_FALCOR_VIEW__ || window.__LDS_INTELLIGENCE_ENABLED__)
+            ? new Error().stack : undefined;
 
         return _origFetch.apply(this, args).then(
             response => {

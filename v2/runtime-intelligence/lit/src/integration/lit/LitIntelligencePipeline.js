@@ -367,7 +367,7 @@ class LitIntelligencePipeline {
                 .filter(Boolean)
             : [_eventRef(triggerEvent)].filter(Boolean);
         const cascade = this.#cascadeAnalyzer.analyze(graph);
-        this.#latestCascade = cascade;
+        this.#latestCascade = cascade ? { ...cascade, capturedAt: Date.now() } : cascade;
         const context = {
             triggerEvent,
             incident,

@@ -207,43 +207,63 @@ function _renderBackgroundHistorySection(target) {
     const history = pipeline.backgroundHistory?.() ?? [];
     if (!history.length) return '';
 
-    // Group by pageUrl, newest-page first
-    const byPage = new Map();
-    for (const e of [...history].reverse()) {
-        const page = e.pageUrl || 'unknown';
-        if (!byPage.has(page)) byPage.set(page, []);
-        byPage.get(page).push(e);
+    // Consolidated summary: count by issue type + top components + page coverage
+    const titleFreq = new Map();
+    const rootFreq  = new Map();
+    let netTotal = 0, budgetTotal = 0, cascadeTotal = 0;
+    const pageSet = new Set();
+
+    for (const e of history) {
+        pageSet.add(e.pageUrl || 'unknown');
+        if (e.title) titleFreq.set(e.title, (titleFreq.get(e.title) || 0) + 1);
+        if (e.rootLabel) rootFreq.set(e.rootLabel, (rootFreq.get(e.rootLabel) || 0) + 1);
+        netTotal    += e.networkCorrelationCount || 0;
+        budgetTotal += e.budgetViolationCount || 0;
+        cascadeTotal += e.cascadeSummary ? 1 : 0;
     }
 
-    const pageSections = [...byPage.entries()].map(([url, entries]) => {
-        const rows = entries.map(e => {
-            const time    = new Date(e.timestamp).toLocaleTimeString();
-            const cascade = e.cascadeSummary ? `cascade: ${e.cascadeSummary.triggerCount} triggers` : '';
-            const net     = e.networkCorrelationCount ? `${e.networkCorrelationCount} net` : '';
-            const budget  = e.budgetViolationCount    ? `${e.budgetViolationCount} budget` : '';
-            const tags    = [cascade, net, budget].filter(Boolean).join(' · ');
-            return html`<li style="margin:4px 0">
-                <span style="color:#585b70">${time}</span>
-                <strong style="color:#cdd6f4"> ${e.title || 'No finding'}</strong>
-                ${tags ? html`<small style="color:#6c7086"> (${tags})</small>` : ''}
-            </li>`;
-        });
-        const short = url.length > 60 ? '…' + url.slice(-57) : url;
-        return html`<details style="margin:6px 0">
-            <summary style="cursor:pointer;font-weight:600;color:#89b4fa">${short} — ${entries.length} incident${entries.length > 1 ? 's' : ''}</summary>
-            <ul style="margin:4px 0 0 16px;padding:0;list-style:none">${rows}</ul>
-        </details>`;
-    });
+    const topIssues = [...titleFreq.entries()]
+        .sort((a, b) => b[1] - a[1]).slice(0, 4)
+        .map(([t, n]) => html`<li><span style="color:#f9e2af">${t}</span> <span style="color:#585b70">×${n}</span></li>`);
+
+    const topRoots = [...rootFreq.entries()]
+        .sort((a, b) => b[1] - a[1]).slice(0, 3)
+        .map(([r, n]) => html`<li><span style="color:#cba6f7">${r}</span> <span style="color:#585b70">×${n}</span></li>`);
+
+    const openReport = () => {
+        const html = pipeline.exportSessionReport?.();
+        if (!html) return;
+        const w = window.open('', '_blank');
+        if (w) { w.document.write(html); w.document.close(); }
+    };
 
     return html`
-        <details open style="margin-top:10px;border:1px solid #313244;border-left:3px solid #89b4fa;border-radius:7px;padding:8px 10px;background:#181825">
-            <summary style="cursor:pointer;color:#89b4fa;font-weight:700;">
-                📼 Background History — ${history.length} incident${history.length > 1 ? 's' : ''} across ${byPage.size} page${byPage.size > 1 ? 's' : ''}
-            </summary>
-            <div style="margin-top:6px;font-size:11px;color:#a6e3a1;margin-bottom:6px;">MonitorInBackground is active — findings persist across navigation.</div>
-            ${pageSections}
-            <div style="margin-top:6px;font-size:10px;color:#585b70">Export: <code style="color:#cba6f7;">window.__LDS_EXPORT_SESSION_REPORT__()</code></div>
-        </details>
+        <div style="margin-top:10px;border:1px solid #313244;border-left:3px solid #89b4fa;border-radius:7px;padding:10px 12px;background:#181825">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <span style="color:#89b4fa;font-weight:700;font-size:12px;">
+                    Session Monitor — ${history.length} finding${history.length > 1 ? 's' : ''} · ${pageSet.size} page${pageSet.size > 1 ? 's' : ''}
+                </span>
+                <button @click=${openReport}
+                    style="font-size:10px;padding:3px 10px;background:#313244;border:1px solid #458588;color:#a6e3a1;border-radius:4px;cursor:pointer;">
+                    Open Full Report
+                </button>
+            </div>
+            <div style="display:flex;gap:12px;margin-bottom:8px;font-size:11px;color:#6c7086">
+                ${cascadeTotal ? html`<span style="color:#cba6f7">${cascadeTotal} cascade${cascadeTotal > 1 ? 's' : ''}</span>` : ''}
+                ${netTotal ? html`<span style="color:#89b4fa">${netTotal} net correlations</span>` : ''}
+                ${budgetTotal ? html`<span style="color:#f9e2af">${budgetTotal} budget violations</span>` : ''}
+            </div>
+            ${topIssues.length ? html`
+                <div style="margin-bottom:6px">
+                    <div style="font-size:10px;color:#585b70;margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em">Top issues</div>
+                    <ul style="margin:0;padding-left:14px;font-size:11px;color:#cdd6f4;line-height:1.7">${topIssues}</ul>
+                </div>` : ''}
+            ${topRoots.length ? html`
+                <div>
+                    <div style="font-size:10px;color:#585b70;margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em">Root signals</div>
+                    <ul style="margin:0;padding-left:14px;font-size:11px;color:#cdd6f4;line-height:1.7">${topRoots}</ul>
+                </div>` : ''}
+        </div>
     `;
 }
 
@@ -257,10 +277,15 @@ function _renderCascadeSection(target) {
           </div>`
         : '';
 
+    const refreshedAt = cascade.capturedAt
+        ? new Date(cascade.capturedAt).toLocaleTimeString()
+        : null;
+
     return html`
         <details style="margin-top:10px;border:1px solid #313244;border-left:3px solid #a6e3a1;border-radius:7px;padding:8px 10px;">
-            <summary style="cursor:pointer;color:#a6e3a1;font-weight:700;">
-                Reactive Cascade — 1 change → ${cascade.componentCount} component${cascade.componentCount === 1 ? '' : 's'} · depth ${cascade.depth} · ${cascade.totalUpdateMs}ms total
+            <summary style="cursor:pointer;color:#a6e3a1;font-weight:700;display:flex;justify-content:space-between;align-items:center">
+                <span>Reactive Cascade — 1 change → ${cascade.componentCount} component${cascade.componentCount === 1 ? '' : 's'} · depth ${cascade.depth} · ${cascade.totalUpdateMs}ms total</span>
+                ${refreshedAt ? html`<span style="color:#585b70;font-size:10px;font-weight:400">updated ${refreshedAt}</span>` : ''}
             </summary>
             <div style="margin-top:8px;font-size:11px;color:#bac2de;line-height:1.6;">
                 <div style="margin-bottom:4px;"><strong style="color:#cdd6f4;">${cascade.triggerCount} cascade trigger${cascade.triggerCount === 1 ? '' : 's'}</strong> detected in this incident.</div>
@@ -428,7 +453,10 @@ function installLitIntelligencePanelPresentation({ target = typeof window !== 'u
         target.addEventListener?.('lds-intelligence-updated', () => {
             const panels = target.document?.querySelectorAll?.('lds-debug-panel') || [];
             for (const panel of panels) {
-                if (panel._tab === INTELLIGENCE_TAB_KEY) panel.requestUpdate?.();
+                // Update Intelligence tab AND Falcor tab (hosts Sequential Opportunities section)
+                if (panel._tab === INTELLIGENCE_TAB_KEY || panel._tab === 'falcor') {
+                    panel.requestUpdate?.();
+                }
             }
         });
         target.addEventListener?.('lds-replay-complete', (e) => {
